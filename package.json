@@ -1,0 +1,34 @@
+{
+  "name": "nightshift",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nightshift: voice on-call and security copilot exposed as an MCP server for Alexa+ and other MCP clients.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/server"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @nightshift/server",
+    "start": "npm run start -w @nightshift/server",
+    "build": "npm run build -w @nightshift/server",
+    "test": "npm test -w @nightshift/server",
+    "typecheck": "npm run typecheck -w @nightshift/server",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "seed": "npm run seed -w @nightshift/server",
+    "token:new": "npm run token:new -w @nightshift/server"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2"
+  }
+}
