@@ -1,4 +1,6 @@
 import { ConfigError, loadConfig } from './config.js';
+import { createPrismaClient } from './db/prisma.js';
+import { PrismaAuditLog } from './db/prismaAuditLog.js';
 import { createApp } from './http/createApp.js';
 import { log } from './lib/log.js';
 import { SERVER_VERSION, TARGET_PROTOCOL_VERSION } from './version.js';
@@ -17,7 +19,17 @@ async function main(): Promise<void> {
   if (config.tokens.length === 0) {
     log.warn('NIGHTSHIFT_TOKENS is empty: every /mcp request will get 401. Run npm run token:new');
   }
-  const nightshift = createApp({ config });
+  if (!config.databaseUrl) {
+    throw new ConfigError('DATABASE_URL is required (audit log). See apps/server/.env.example');
+  }
+  const db = createPrismaClient(config.databaseUrl);
+  try {
+    await db.$queryRaw`SELECT 1`;
+  } catch {
+    throw new ConfigError("Can't reach the database at DATABASE_URL. Is it running and migrated?");
+  }
+
+  const nightshift = createApp({ config, audit: new PrismaAuditLog(db) });
 
   const server = nightshift.app.listen(config.port, config.host, () => {
     log.info('nightshift listening', {
@@ -35,7 +47,10 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     log.info('shutting down', { signal });
     server.close();
-    void nightshift.close().finally(() => process.exit(0));
+    void nightshift
+      .close()
+      .then(() => db.$disconnect())
+      .finally(() => process.exit(0));
   };
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

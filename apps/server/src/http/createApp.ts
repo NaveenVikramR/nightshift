@@ -5,7 +5,10 @@ import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { isInitializeRequest, type AuthInfo } from '@modelcontextprotocol/server';
 import type { Config } from '../config.js';
 import { createMcpServer } from '../mcp/createMcpServer.js';
+import type { AuditLog } from '../lib/audit.js';
 import { createTokenVerifier, getPrincipal } from '../lib/auth.js';
+import type { ToolDeps } from '../tools/types.js';
+import { SERVER_VERSION } from '../version.js';
 import { AuthFailureLimiter, authFailureGuard } from '../lib/authFailureLimiter.js';
 import { log } from '../lib/log.js';
 import { jsonRpcError } from './jsonRpcError.js';
@@ -14,6 +17,7 @@ import { SessionStore } from './sessionStore.js';
 
 export interface AppDeps {
   config: Config;
+  audit: AuditLog;
   now?: () => number;
 }
 
@@ -26,7 +30,13 @@ export interface NightshiftApp {
   close(): Promise<void>;
 }
 
-export function createApp({ config, now = Date.now }: AppDeps): NightshiftApp {
+export function createApp({ config, audit, now = Date.now }: AppDeps): NightshiftApp {
+  const toolDeps: ToolDeps = {
+    audit,
+    now: () => new Date(now()),
+    serverVersion: SERVER_VERSION,
+    startedAt: new Date(now()),
+  };
   const sessions = new SessionStore(config.sessionIdleTtlMs, now);
   const authFailures = new AuthFailureLimiter(config.authFailLimit, config.authFailWindowMs, now);
 
@@ -66,7 +76,7 @@ export function createApp({ config, now = Date.now }: AppDeps): NightshiftApp {
     }
 
     if (req.method === 'POST' && isInitializeRequest(req.body)) {
-      const server = createMcpServer();
+      const server = createMcpServer(toolDeps);
       const transport: NodeStreamableHTTPServerTransport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(), // crypto-secure (CSPRNG) v4 UUID
         onsessioninitialized: (id: string): void => sessions.add(id, { transport, server, actor }),

@@ -101,7 +101,12 @@ docs/
 | `get_incident_timeline` | read                                      | viewer      |
 | `add_incident_note`     | write (low)                               | responder   |
 
-Use the `add-mcp-tool` skill whenever creating or changing a tool.
+Plus one diagnostic tool (not counted in the 13): `ping_nightshift` — read, viewer — reports server
+version and the caller's role. **Implemented:** `ping_nightshift` only.
+
+Use the `add-mcp-tool` skill whenever creating or changing a tool. Every tool is a `ToolDefinition`
+in `src/tools/<name>.ts`, listed in `TOOLS` (`src/mcp/registerTools.ts`), and runs through
+`runTool` (role check → handler → fail-closed audit row → `{ speak, data }` result).
 
 ## Invariants — never break these
 
