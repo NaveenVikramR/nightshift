@@ -1,0 +1,96 @@
+// Nightshift database schema (PostgreSQL). Fields are minimal on purpose;
+// extend them as features land. Generated client: src/generated/prisma (gitignored).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// One row per tool call (invariant 7). Never store raw input: only its hash.
+model AuditLog {
+  id        String   @id @default(uuid())
+  actor     String
+  role      String // viewer | responder
+  tool      String
+  inputHash String // sha256 of canonical JSON input
+  outcome   String // ok | forbidden | error | ...
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actor, createdAt])
+  @@map("audit_log")
+}
+
+/// Two-phase remediation token (invariant 1). Single use, short-lived.
+model PendingAction {
+  id             String    @id @default(uuid())
+  confirmationId String    @unique
+  action         String // failover_provider | rollback_deploy | restart_service
+  params         Json
+  createdBy      String
+  expiresAt      DateTime
+  usedAt         DateTime?
+  result         Json?
+  createdAt      DateTime  @default(now())
+
+  @@index([createdBy, usedAt])
+  @@map("pending_action")
+}
+
+model Incident {
+  id         String          @id @default(uuid())
+  title      String
+  severity   String // critical | warning | info
+  status     String          @default("open") // open | resolved
+  service    String?
+  openedAt   DateTime        @default(now())
+  resolvedAt DateTime?
+  events     IncidentEvent[]
+
+  @@index([status, openedAt])
+  @@map("incident")
+}
+
+model IncidentEvent {
+  id         String   @id @default(uuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  kind       String // alert | ack | silence | note | action | deploy
+  actor      String?
+  message    String
+  createdAt  DateTime @default(now())
+
+  @@index([incidentId, createdAt])
+  @@map("incident_event")
+}
+
+model SecurityScan {
+  id         String    @id @default(uuid())
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  score      Int? // 0-100
+  grade      String? // A-F
+  findings   Finding[]
+
+  @@index([startedAt])
+  @@map("security_scan")
+}
+
+model Finding {
+  id        String       @id @default(uuid())
+  scanId    String
+  scan      SecurityScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  check     String // tls_expiry | security_headers | dependabot | secret_scanning | ...
+  asset     String
+  severity  String // critical | high | medium | low | info
+  title     String
+  detail    Json?
+  createdAt DateTime     @default(now())
+
+  @@index([scanId])
+  @@map("finding")
+}
