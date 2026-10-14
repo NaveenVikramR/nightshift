@@ -74,14 +74,29 @@ docs/
 
 ## Commands
 
-(Fill in as they are created — keep this section accurate.)
+Keep this section accurate. Run from the repo root unless noted. Server config: `apps/server/.env`
+(copy from `.env.example`; every variable is documented there).
 
-- `npm run dev` — start server
-- `npm test` — run tests
-- `npx prisma migrate dev` — migrate DB
-- `npm run seed` — seed demo data
-- `npx @modelcontextprotocol/inspector` — manual tool testing
-- `claude mcp add --transport http nightshift http://localhost:3000/mcp` — test from Claude Code
+- `npm install` — install everything; also runs `prisma generate` (client → `apps/server/src/generated/`)
+- `npm run dev` — start server with tsx watch on `http://127.0.0.1:3000/mcp` (needs `DATABASE_URL`)
+- `npm run build && npm start` — compile with tsc and run `dist/index.js`
+- `npm test` — Vitest (no network, no DB; in-memory audit fake)
+- `npm run typecheck` / `npm run lint` / `npm run format` — tsc, ESLint, Prettier
+- `npm run token:new -- <actor> <viewer|responder>` — print a new token + its `NIGHTSHIFT_TOKENS` entry
+- `npm run db:migrate -w @nightshift/server` — `prisma migrate deploy` (apply migrations; use for Neon)
+- `npm run db:migrate:dev -w @nightshift/server` — `prisma migrate dev` (create a new migration after schema edits)
+- `npm run seed` — seed demo data (stub for now: checks DB connectivity)
+- `cd apps/server && npx prisma dev --name nightshift --detach` — optional local Postgres (prints its URL)
+- `npx @modelcontextprotocol/inspector --cli http://127.0.0.1:3000/mcp --transport http --header "Authorization: Bearer <token>" --method tools/list` — manual tool testing (drop `--cli …` for the UI)
+- `claude mcp add --transport http nightshift http://127.0.0.1:3000/mcp --header "Authorization: Bearer <token>"` — test from Claude Code (`claude mcp get nightshift` → Connected)
+
+## Runtime constraints
+
+- **Single instance only.** MCP sessions (`src/http/sessionStore.ts`) and failed-auth counters
+  (`src/lib/authFailureLimiter.ts`) live in process memory. Deploy exactly one instance (no
+  horizontal scaling) until a shared store exists. Behind a proxy set `TRUST_PROXY=true`.
+- Middleware order on `/mcp`: SDK Host/Origin guard + JSON limit → exact-origin guard (403) →
+  failed-auth limiter (429) → `requireBearerAuth` (401) → session lookup (404) → SDK transport.
 
 ## The 13 tools
 
