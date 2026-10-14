@@ -14,6 +14,9 @@ function loadDotEnv(): void {
 async function main(): Promise<void> {
   loadDotEnv();
   const config = loadConfig();
+  if (config.tokens.length === 0) {
+    log.warn('NIGHTSHIFT_TOKENS is empty: every /mcp request will get 401. Run npm run token:new');
+  }
   const nightshift = createApp({ config });
 
   const server = nightshift.app.listen(config.port, config.host, () => {
@@ -22,6 +25,11 @@ async function main(): Promise<void> {
       version: SERVER_VERSION,
       protocol: TARGET_PROTOCOL_VERSION,
     });
+  });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    log.error('http server error', { code: err.code, error: err.message });
+    process.exit(1);
   });
 
   const shutdown = (signal: string) => {

@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { ErrorRequestHandler, Express, Request, Response } from 'express';
-import { createMcpExpressApp } from '@modelcontextprotocol/express';
+import { createMcpExpressApp, requireBearerAuth } from '@modelcontextprotocol/express';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
-import { isInitializeRequest } from '@modelcontextprotocol/server';
+import { isInitializeRequest, type AuthInfo } from '@modelcontextprotocol/server';
 import type { Config } from '../config.js';
 import { createMcpServer } from '../mcp/createMcpServer.js';
+import { createTokenVerifier, getPrincipal } from '../lib/auth.js';
+import { AuthFailureLimiter, authFailureGuard } from '../lib/authFailureLimiter.js';
 import { log } from '../lib/log.js';
 import { jsonRpcError } from './jsonRpcError.js';
 import { originGuard } from './originGuard.js';
@@ -15,6 +17,9 @@ export interface AppDeps {
   now?: () => number;
 }
 
+/** requireBearerAuth attaches the verified token info as `req.auth`. */
+type AuthedRequest = Request & { auth?: AuthInfo };
+
 export interface NightshiftApp {
   app: Express;
   sessions: SessionStore;
@@ -23,6 +28,7 @@ export interface NightshiftApp {
 
 export function createApp({ config, now = Date.now }: AppDeps): NightshiftApp {
   const sessions = new SessionStore(config.sessionIdleTtlMs, now);
+  const authFailures = new AuthFailureLimiter(config.authFailLimit, config.authFailWindowMs, now);
 
   // SDK app: express.json({ limit }) + Host-header DNS-rebinding guard (+ its own
   // hostname-level Origin check). Our originGuard below adds the exact-origin check.
@@ -39,8 +45,14 @@ export function createApp({ config, now = Date.now }: AppDeps): NightshiftApp {
     res.type('text/plain').send('ok');
   });
 
-  const handleMcp = async (req: Request, res: Response): Promise<void> => {
-    const actor = 'anonymous';
+  const handleMcp = async (req: AuthedRequest, res: Response): Promise<void> => {
+    const principal = getPrincipal(req.auth);
+    if (!principal) {
+      // requireBearerAuth runs first, so this only happens on a wiring bug.
+      res.status(401).json(jsonRpcError(-32000, 'Unauthorized'));
+      return;
+    }
+    const { actor } = principal;
     const sessionId = req.header('mcp-session-id');
 
     if (sessionId !== undefined) {
@@ -75,7 +87,10 @@ export function createApp({ config, now = Date.now }: AppDeps): NightshiftApp {
       );
   };
 
+  // Order matters: origin (403) → failed-auth limiter (429) → bearer token (401).
   app.use('/mcp', originGuard(config.allowedOrigins));
+  app.use('/mcp', authFailureGuard(authFailures));
+  app.use('/mcp', requireBearerAuth({ verifier: createTokenVerifier(config.tokens) }));
   app.post('/mcp', handleMcp);
   app.get('/mcp', handleMcp);
   app.delete('/mcp', handleMcp);
@@ -88,7 +103,10 @@ export function createApp({ config, now = Date.now }: AppDeps): NightshiftApp {
 
   app.use(errorHandler);
 
-  const sweeper = setInterval(() => void sessions.sweep(), 60_000);
+  const sweeper = setInterval(() => {
+    void sessions.sweep();
+    authFailures.sweep();
+  }, 60_000);
   sweeper.unref();
 
   return {
