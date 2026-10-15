@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
     "seed": "tsx prisma/seed.ts",
     "token:new": "tsx scripts/new-token.ts"
   },
