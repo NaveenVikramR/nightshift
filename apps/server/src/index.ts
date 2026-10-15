@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     throw new ConfigError("Can't reach the database at DATABASE_URL. Is it running and migrated?");
   }
 
-  const nightshift = createApp({ config, audit: new PrismaAuditLog(db) });
+  const nightshift = createApp({ config, deps: { audit: new PrismaAuditLog(db) } });
 
   const server = nightshift.app.listen(config.port, config.host, () => {
     log.info('nightshift listening', {

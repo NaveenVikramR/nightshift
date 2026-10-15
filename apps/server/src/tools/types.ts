@@ -31,4 +31,6 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject, D = unknown
   minRole: Role;
   annotations: ToolAnnotations;
   handler(input: z.infer<S>, ctx: ToolContext): Promise<ToolOutput<D>>;
+  /** Optional spoken explanation for the first validation issue (≤ 30 words). */
+  describeInvalidInput?(issue: z.core.$ZodIssue): string | undefined;
 }

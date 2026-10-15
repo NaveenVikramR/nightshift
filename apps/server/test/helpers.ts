@@ -3,6 +3,7 @@ import type { Response } from 'supertest';
 import type { Config } from '../src/config.js';
 import { createApp, type NightshiftApp } from '../src/http/createApp.js';
 import { sha256Hex } from '../src/lib/auth.js';
+import type { ToolDefinition } from '../src/tools/types.js';
 import { InMemoryAuditLog } from './fakes/inMemoryAuditLog.js';
 
 // Test-only tokens; never valid anywhere else.
@@ -37,10 +38,18 @@ export interface TestHarness {
   clock: { now: number };
 }
 
-export function makeHarness(overrides: Partial<Config> = {}): TestHarness {
+export function makeHarness(
+  overrides: Partial<Config> = {},
+  opts: { tools?: readonly ToolDefinition[] } = {},
+): TestHarness {
   const audit = new InMemoryAuditLog();
   const clock = { now: Date.parse('2026-10-14T12:00:00Z') };
-  const ns = createApp({ config: testConfig(overrides), audit, now: () => clock.now });
+  const ns = createApp({
+    config: testConfig(overrides),
+    deps: { audit },
+    ...(opts.tools && { tools: opts.tools }),
+    now: () => clock.now,
+  });
   return { ns, audit, clock };
 }
 
@@ -107,12 +116,7 @@ export function rpcMessage(res: Response): { result?: Record<string, unknown>; e
   };
 }
 
-export async function callTool(
-  ns: NightshiftApp,
-  token: string,
-  name: string,
-  args: Record<string, unknown> = {},
-) {
+export async function callTool(ns: NightshiftApp, token: string, name: string, args: unknown = {}) {
   const sessionId = await openSession(ns, token);
   const res = await postMcp(
     ns,

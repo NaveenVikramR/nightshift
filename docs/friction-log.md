@@ -98,3 +98,34 @@
 - **Time lost:** ~5 minutes
 - **Workaround:** Pinned TypeScript 6.0.3.
 - **Suggestion:** (typescript-eslint) publish a compatibility note for TS 7 in the README.
+
+## FL-08: Tool-argument validation and unknown-tool errors happen before any server hook
+
+- **Date:** 2026-10-16
+- **Product / tool:** MCP TypeScript SDK `@modelcontextprotocol/server` 2.3.1 (`McpServer`)
+- **Task attempted:** Write an audit-log row for every `tools/call`, including calls with malformed arguments or an unknown tool name (security requirement: audit everything).
+- **Steps taken:**
+  1. Registered tools with `server.registerTool(name, { inputSchema: zodSchema }, handler)` and audited inside the handler wrapper.
+  2. Called a tool with `{ "minutes": 999 }` (schema max 240) and a non-existent tool name; found no audit rows.
+  3. Read `dist/mcp-*.mjs`: the built-in `tools/call` handler runs `validateToolInput()` and turns a failure into `createToolError("Input validation error: …")` before the tool callback; an unknown name throws `ProtocolError(InvalidParams, "Tool X not found")`.
+- **Expected:** A hook (e.g. `onToolCall` / `onToolError` / middleware) that sees every `tools/call` with its outcome, or an option to let the tool handle validation itself.
+- **Actual:** No such hook. The only server-side alternative is replacing the whole `tools/call` handler via the low-level `server.setRequestHandler`, which also means re-implementing listing, output validation and result projection.
+- **Severity:** Medium
+- **Time lost:** ~40 minutes
+- **Workaround:** Register each tool with a pass-through Standard Schema: `~standard.jsonSchema` delegates to zod (so `tools/list` still advertises the exact schema) and `~standard.validate` returns the value unchanged; our wrapper validates with zod and audits `invalid_input`. Unknown tools and HTTP-level refusals are audited by an Express middleware that inspects the parsed body and the response status (`src/http/toolCallAuditTap.ts`).
+- **Suggestion:** Add an `McpServer` option such as `onToolCall({ name, arguments, outcome, error, ctx })` invoked for every `tools/call` (unknown tool, validation failure, handler error, success), or a `validateInput: false` flag on `registerTool`.
+
+## FL-09: `createMcpExpressApp` guards can't be ordered with your own middleware
+
+- **Date:** 2026-10-16
+- **Product / tool:** MCP TypeScript SDK `@modelcontextprotocol/express` 2.0.2
+- **Task attempted:** Run an audit middleware before the Host/Origin guards so 403 refusals of tool calls are logged too.
+- **Steps taken:**
+  1. Used `createMcpExpressApp({ host, allowedHosts, allowedOrigins, jsonLimit })`.
+  2. Added `app.use('/mcp', auditTap)`; requests rejected by the SDK's Host/Origin check never reached it.
+- **Expected:** A way to insert middleware before the built-in guards (e.g. a `before` hook), or documentation listing the exact middleware it installs so it can be rebuilt.
+- **Actual:** The factory installs `express.json` and the guards app-wide during construction. Only the JSDoc hints at what is installed and in what order.
+- **Severity:** Low
+- **Time lost:** ~15 minutes
+- **Workaround:** Built a plain Express app from the exported pieces in an explicit order: `express.json({limit})` → audit tap → `hostHeaderValidation()` / `localhostHostValidation()` → exact-origin guard → `requireBearerAuth()`.
+- **Suggestion:** Document the middleware `createMcpExpressApp` installs (and its order) in the README, and accept an optional `beforeGuards: RequestHandler[]` option.

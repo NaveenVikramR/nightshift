@@ -1,7 +1,19 @@
 import { createHash } from 'node:crypto';
 import type { Role } from './roles.js';
 
-export type AuditOutcome = 'ok' | 'forbidden' | 'unauthenticated' | 'error';
+export type AuditOutcome =
+  // reached the tool wrapper (runTool)
+  | 'ok'
+  | 'invalid_input'
+  | 'forbidden'
+  | 'unauthenticated'
+  | 'error'
+  // refused before reaching any tool (toolCallAuditTap)
+  | 'unknown_tool'
+  | 'forbidden_request'
+  | 'rate_limited'
+  | 'session_not_found'
+  | 'bad_request';
 
 export interface AuditEntry {
   actor: string;

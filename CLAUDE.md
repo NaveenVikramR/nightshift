@@ -95,8 +95,13 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 - **Single instance only.** MCP sessions (`src/http/sessionStore.ts`) and failed-auth counters
   (`src/lib/authFailureLimiter.ts`) live in process memory. Deploy exactly one instance (no
   horizontal scaling) until a shared store exists. Behind a proxy set `TRUST_PROXY=true`.
-- Middleware order on `/mcp`: SDK Host/Origin guard + JSON limit → exact-origin guard (403) →
-  failed-auth limiter (429) → `requireBearerAuth` (401) → session lookup (404) → SDK transport.
+- Middleware order (`src/http/createApp.ts`): `express.json` (413) → on `/mcp`: tool-call audit
+  tap (observes; audits refusals + unknown tools) → SDK Host guard (403) → exact-origin guard
+  (403) → failed-auth limiter (429) → SDK `requireBearerAuth` (401) → session lookup (404) → SDK
+  transport. We do NOT use `createMcpExpressApp` (its guards can't be ordered; FL-09).
+- Tools are registered with `passThroughSchema(zod)`: `tools/list` shows the real schema, but
+  the SDK doesn't validate; `runTool` does (so `invalid_input` is audited; FL-08). Never pass a
+  raw zod schema to `registerTool`.
 
 ## The 13 tools
 
@@ -121,7 +126,8 @@ version and the caller's role. **Implemented:** `ping_nightshift` only.
 
 Use the `add-mcp-tool` skill whenever creating or changing a tool. Every tool is a `ToolDefinition`
 in `src/tools/<name>.ts`, listed in `TOOLS` (`src/mcp/registerTools.ts`), and runs through
-`runTool` (role check → handler → fail-closed audit row → `{ speak, data }` result).
+`runTool` (role check → zod validation → handler → fail-closed audit row → `{ speak, data }`
+result). Throw `UserFacingError(code, speak)` (`src/lib/errors.ts`) for expected failures.
 
 ## Invariants — never break these
 

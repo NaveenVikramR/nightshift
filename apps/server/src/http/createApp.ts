@@ -1,24 +1,49 @@
 import { randomUUID } from 'node:crypto';
-import type { ErrorRequestHandler, Express, Request, Response } from 'express';
-import { createMcpExpressApp, requireBearerAuth } from '@modelcontextprotocol/express';
+import express, {
+  type ErrorRequestHandler,
+  type Express,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
+import {
+  hostHeaderValidation,
+  localhostHostValidation,
+  requireBearerAuth,
+} from '@modelcontextprotocol/express';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { isInitializeRequest, type AuthInfo } from '@modelcontextprotocol/server';
 import type { Config } from '../config.js';
 import { createMcpServer } from '../mcp/createMcpServer.js';
-import type { AuditLog } from '../lib/audit.js';
+import { TOOLS } from '../mcp/registerTools.js';
 import { createTokenVerifier, getPrincipal } from '../lib/auth.js';
-import type { ToolDeps } from '../tools/types.js';
+import type { ToolDefinition, ToolDeps } from '../tools/types.js';
 import { SERVER_VERSION } from '../version.js';
 import { AuthFailureLimiter, authFailureGuard } from '../lib/authFailureLimiter.js';
 import { log } from '../lib/log.js';
 import { jsonRpcError } from './jsonRpcError.js';
 import { originGuard } from './originGuard.js';
 import { SessionStore } from './sessionStore.js';
+import { toolCallAuditTap } from './toolCallAuditTap.js';
+
+/** Tool dependencies supplied by the caller; runtime ones (clock, version) are added here. */
+export type ExternalToolDeps = Omit<ToolDeps, 'now' | 'serverVersion' | 'startedAt'>;
 
 export interface AppDeps {
   config: Config;
-  audit: AuditLog;
+  deps: ExternalToolDeps;
+  /** Defaults to every registered tool; tests may inject extra tools. */
+  tools?: readonly ToolDefinition[];
   now?: () => number;
+}
+
+const LOCALHOST_BINDS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+/** Same rules createMcpExpressApp applies, but placed explicitly in our chain. */
+function hostGuard(config: Config): RequestHandler | undefined {
+  if (config.allowedHosts.length > 0) return hostHeaderValidation(config.allowedHosts);
+  if (LOCALHOST_BINDS.has(config.host)) return localhostHostValidation();
+  return undefined;
 }
 
 /** requireBearerAuth attaches the verified token info as `req.auth`. */
@@ -30,9 +55,9 @@ export interface NightshiftApp {
   close(): Promise<void>;
 }
 
-export function createApp({ config, audit, now = Date.now }: AppDeps): NightshiftApp {
+export function createApp({ config, deps, tools = TOOLS, now = Date.now }: AppDeps): NightshiftApp {
   const toolDeps: ToolDeps = {
-    audit,
+    ...deps,
     now: () => new Date(now()),
     serverVersion: SERVER_VERSION,
     startedAt: new Date(now()),
@@ -40,16 +65,10 @@ export function createApp({ config, audit, now = Date.now }: AppDeps): Nightshif
   const sessions = new SessionStore(config.sessionIdleTtlMs, now);
   const authFailures = new AuthFailureLimiter(config.authFailLimit, config.authFailWindowMs, now);
 
-  // SDK app: express.json({ limit }) + Host-header DNS-rebinding guard (+ its own
-  // hostname-level Origin check). Our originGuard below adds the exact-origin check.
-  const app = createMcpExpressApp({
-    host: config.host,
-    ...(config.allowedHosts.length > 0 && { allowedHosts: config.allowedHosts }),
-    allowedOrigins: config.allowedOrigins.map((o) => new URL(o).hostname),
-    jsonLimit: `${config.maxBodyBytes}b`,
-  });
+  const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
+  app.use(express.json({ limit: config.maxBodyBytes }));
 
   app.get('/healthz', (_req, res) => {
     res.type('text/plain').send('ok');
@@ -76,7 +95,7 @@ export function createApp({ config, audit, now = Date.now }: AppDeps): Nightshif
     }
 
     if (req.method === 'POST' && isInitializeRequest(req.body)) {
-      const server = createMcpServer(toolDeps);
+      const server = createMcpServer(toolDeps, tools);
       const transport: NodeStreamableHTTPServerTransport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(), // crypto-secure (CSPRNG) v4 UUID
         onsessioninitialized: (id: string): void => sessions.add(id, { transport, server, actor }),
@@ -97,7 +116,20 @@ export function createApp({ config, audit, now = Date.now }: AppDeps): Nightshif
       );
   };
 
-  // Order matters: origin (403) → failed-auth limiter (429) → bearer token (401).
+  // Order matters: audit tap (observes) → Host (403) → Origin (403) →
+  // failed-auth limiter (429) → bearer token (401) → session (404) → transport.
+  app.use(
+    '/mcp',
+    toolCallAuditTap({
+      audit: deps.audit,
+      knownTools: new Set(tools.map((t) => t.name)),
+      rateLimitedDedupMs: config.authFailWindowMs,
+      now,
+    }),
+  );
+  const host = hostGuard(config);
+  if (host) app.use('/mcp', host);
+  else log.warn('Host header validation is off (non-localhost bind, ALLOWED_HOSTS empty)');
   app.use('/mcp', originGuard(config.allowedOrigins));
   app.use('/mcp', authFailureGuard(authFailures));
   app.use('/mcp', requireBearerAuth({ verifier: createTokenVerifier(config.tokens) }));

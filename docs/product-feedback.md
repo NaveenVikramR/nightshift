@@ -4,10 +4,11 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 
 ## MCP TypeScript SDK (v2: `@modelcontextprotocol/server` 2.3.1, `/node` 2.1.1, `/express` 2.0.2)
 
-- **What I used it for:** The whole MCP layer of Nightshift: `McpServer` + `registerTool` (zod
-  schemas), the stateful `NodeStreamableHTTPServerTransport` on a single `/mcp` endpoint,
-  `createMcpExpressApp` (JSON body limit and Host-header DNS-rebinding guard), `requireBearerAuth`
-  with a custom `OAuthTokenVerifier`, and `isInitializeRequest`.
+- **What I used it for:** The whole MCP layer of Nightshift: `McpServer` + `registerTool`
+  (Standard Schema input schemas), the stateful `NodeStreamableHTTPServerTransport` on a single
+  `/mcp` endpoint, `hostHeaderValidation` / `localhostHostValidation` (DNS-rebinding guard),
+  `requireBearerAuth` with a custom `OAuthTokenVerifier`, and `isInitializeRequest`. (Day 1
+  used `createMcpExpressApp`; Day 2 replaced it with an explicit chain, see FL-09.)
 - **What worked well:**
   - The stateful transport handled the spec's session rules out of the box: 404 for unknown
     sessions, 400 for missing sessions and unsupported `MCP-Protocol-Version`, and `DELETE`.
@@ -20,6 +21,10 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
     to choosing between them (FL-01).
   - Origin validation is hostname-only (FL-04).
   - `expiresAt` is required in practice but optional in the type (FL-05).
+  - No hook sees every `tools/call`: validation failures and unknown tools are answered before
+    any server code runs, so auditing them needs a workaround (FL-08). The Standard Schema
+    design did make that workaround clean: listing and validation are separate functions.
+  - `createMcpExpressApp` can't be combined with middleware that must run first (FL-09).
 - **Onboarding:** About 45 minutes from install to a session-aware server answering
   `initialize`, mostly spent reading `.d.mts` files to pick the right serving API. The package
   READMEs' Express snippet is stateless only; a stateful example would have saved time.
