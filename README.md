@@ -100,6 +100,12 @@ Then ask, for example, "Is Nightshift up, and what am I allowed to do?" and Clau
 | Audit everything                                                    | every tool call writes an `AuditLog` row (actor, role, tool, input hash, outcome); fail-closed                                            |
 | Hardening                                                           | 1 MB JSON body limit (413); 20 failed auths per IP per 10 min → 429                                                                       |
 
+**Protocol versions.** Nightshift targets MCP **2025-11-25**. Modern clients (MCP Inspector 2.x,
+Claude Code) negotiate exactly that, and a client that asks for a newer revision such as
+2026-07-28 is answered with 2025-11-25. As the SDK does by default, the server also still
+accepts older revisions (2025-06-18, 2025-03-26, 2024-11-05, 2024-10-07) during `initialize` and
+in the `MCP-Protocol-Version` header, so older clients keep working. Any other value gets 400.
+
 ## Deployment notes
 
 - **Run exactly one instance.** MCP sessions and the failed-auth counters live in process memory.
