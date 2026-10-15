@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 // Trigger demo-target failure scenarios.
 //   node infra/scripts/chaos.mjs <provider_outage|latency_spike|auth_bruteforce|webhook_spoofing>
 //   node infra/scripts/chaos.mjs reset | state | route-provider <razorpay|stripe>

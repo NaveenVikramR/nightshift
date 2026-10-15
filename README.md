@@ -1,4 +1,4 @@
-﻿# Nightshift
+# Nightshift
 
 Nightshift is a voice on-call and security copilot for small engineering teams: a self-hosted
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
@@ -27,14 +27,14 @@ cp apps/server/.env.example apps/server/.env  # then edit it (every variable is 
    npm run seed                                  # stub: checks connectivity
    ```
    No Neon yet? `cd apps/server && npx prisma dev --name nightshift --detach` prints a local
-   `postgres://â€¦` URL you can use.
+   `postgres://…` URL you can use.
 2. **API tokens:** create one per person or client. Only the SHA-256 hash goes in `.env`:
    ```bash
    npm run token:new -- alice responder
    npm run token:new -- alexa-sim viewer
    ```
    Each run prints the token once and a JSON entry. Put the entries in the
-   `NIGHTSHIFT_TOKENS=[â€¦]` array, and store the tokens in your MCP clients. Restart the server
+   `NIGHTSHIFT_TOKENS=[…]` array, and store the tokens in your MCP clients. Restart the server
    after changing tokens.
 
 ## Run
@@ -94,11 +94,11 @@ Then ask, for example, "Is Nightshift up, and what am I allowed to do?" and Clau
 | SDK imported and called at runtime                                  | `McpServer`, `NodeStreamableHTTPServerTransport`, `hostHeaderValidation`, `requireBearerAuth`, `isInitializeRequest`                                                            |
 | `Origin` validated on every request, 403 if invalid                 | SDK host/origin guard + exact `scheme://host:port` allowlist (`src/http/originGuard.ts`)                                                                                        |
 | Bind to 127.0.0.1 locally                                           | `HOST` defaults to `127.0.0.1`                                                                                                                                                  |
-| `MCP-Session-Id`                                                    | crypto-random UUIDs; unknown or expired session â†’ 404; `DELETE` ends it; sessions are bound to the token's actor                                                              |
-| `MCP-Protocol-Version`                                              | unsupported â†’ 400 (SDK)                                                                                                                                                       |
+| `MCP-Session-Id`                                                    | crypto-random UUIDs; unknown or expired session → 404; `DELETE` ends it; sessions are bound to the token's actor                                                                |
+| `MCP-Protocol-Version`                                              | unsupported → 400 (SDK)                                                                                                                                                         |
 | Auth + roles                                                        | bearer tokens stored as SHA-256, compared in constant time; roles `viewer` / `responder` checked in every tool (`src/tools/runTool.ts`)                                         |
 | Audit everything                                                    | every `tools/call` writes one `AuditLog` row (actor, role, tool, input hash, outcome), including invalid arguments, unknown tools and auth/origin/session refusals; fail-closed |
-| Hardening                                                           | 1 MB JSON body limit (413); 20 failed auths per IP per 10 min â†’ 429                                                                                                           |
+| Hardening                                                           | 1 MB JSON body limit (413); 20 failed auths per IP per 10 min → 429                                                                                                             |
 
 **Protocol versions.** Nightshift targets MCP **2025-11-25**. Modern clients (MCP Inspector 2.x,
 Claude Code) negotiate exactly that, and a client that asks for a newer revision such as
