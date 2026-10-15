@@ -1,0 +1,51 @@
+# Nightshift service catalog. Validated at startup (src/serviceConfig.ts).
+# Plugging in another app (e.g. TruePay) means editing THIS file only:
+# point the URLs at its Prometheus/Alertmanager and write PromQL per signal.
+#
+# Env overrides (for deployment): PROMETHEUS_URL, ALERTMANAGER_URL.
+
+prometheus:
+  url: http://127.0.0.1:9090
+  timeoutMs: 5000
+
+alertmanager:
+  url: http://127.0.0.1:9093
+  timeoutMs: 5000
+
+services:
+  - name: payments-api # must match the `service` label on alerts
+    displayName: payments API # what Nightshift says out loud
+    aliases: [payments, payment api, payment service, payments service, checkout]
+    queries:
+      # Each query must return a single number (instant vector with one series).
+      errorRate: >-
+        sum(rate(http_requests_total{service="payments-api",status=~"5.."}[1m]))
+        / clamp_min(sum(rate(http_requests_total{service="payments-api"}[1m])), 1e-9)
+      latencyP95: >-
+        histogram_quantile(0.95,
+        sum by (le) (rate(http_request_duration_seconds_bucket{service="payments-api"}[1m])))
+      throughput: sum(rate(http_requests_total{service="payments-api"}[1m]))
+      # One series per dependency; value 0 closed, 1 open, 2 half-open.
+      breakers: circuit_breaker_state{service="payments-api"}
+    breakerLabel: provider
+    thresholds:
+      errorRate: 0.05 # ratio, 0-1
+      latencyP95Seconds: 1.0
+
+  - name: webhook-receiver
+    displayName: webhook receiver
+    aliases: [webhooks, webhook, payment webhooks, webhook service]
+    queries:
+      errorRate: >-
+        sum(rate(http_requests_total{service="webhook-receiver",status=~"5.."}[1m]))
+        / clamp_min(sum(rate(http_requests_total{service="webhook-receiver"}[1m])), 1e-9)
+      latencyP95: >-
+        histogram_quantile(0.95,
+        sum by (le) (rate(http_request_duration_seconds_bucket{service="webhook-receiver"}[1m])))
+      throughput: sum(rate(http_requests_total{service="webhook-receiver"}[1m]))
+    thresholds:
+      errorRate: 0.05
+      latencyP95Seconds: 1.0
+
+# Hosts that run_security_scan may check (TLS, headers). Nothing else is ever scanned.
+scanAssets: []
