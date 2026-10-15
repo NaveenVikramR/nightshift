@@ -7,6 +7,7 @@ import { pingNightshift } from '../../src/tools/ping_nightshift.js';
 import { runTool } from '../../src/tools/runTool.js';
 import type { ToolDefinition, ToolDeps } from '../../src/tools/types.js';
 import { InMemoryAuditLog } from '../fakes/inMemoryAuditLog.js';
+import { fakeToolDeps } from '../fakes/toolDeps.js';
 import {
   callTool,
   makeHarness,
@@ -83,12 +84,7 @@ describe('runTool adapter', () => {
   });
 
   function deps(audit = new InMemoryAuditLog()): ToolDeps {
-    return {
-      audit,
-      now: () => new Date('2026-10-14T12:00:00Z'),
-      serverVersion: '0.1.0',
-      startedAt: new Date('2026-10-14T11:00:00Z'),
-    };
+    return { ...fakeToolDeps().deps, audit };
   }
 
   const responderOnly: ToolDefinition = {

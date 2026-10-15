@@ -41,6 +41,36 @@ model PendingAction {
   @@map("pending_action")
 }
 
+/// Nightshift-side acknowledgement (Alertmanager has no ack). One per firing
+/// instance: a re-fire (new startsAt) needs a new ack.
+model AlertAck {
+  id          String   @id @default(uuid())
+  fingerprint String
+  startsAt    DateTime
+  alertname   String
+  service     String?
+  ackedBy     String
+  ackedAt     DateTime @default(now())
+
+  @@unique([fingerprint, startsAt])
+  @@map("alert_ack")
+}
+
+/// Silences Nightshift created in Alertmanager (idempotency + history).
+model AlertSilence {
+  id              String   @id @default(uuid())
+  fingerprint     String
+  alertname       String
+  silenceId       String // Alertmanager silence id
+  durationMinutes Int
+  createdBy       String
+  endsAt          DateTime
+  createdAt       DateTime @default(now())
+
+  @@index([fingerprint, createdAt])
+  @@map("alert_silence")
+}
+
 model Incident {
   id         String          @id @default(uuid())
   title      String

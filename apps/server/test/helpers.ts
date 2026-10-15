@@ -4,7 +4,8 @@ import type { Config } from '../src/config.js';
 import { createApp, type NightshiftApp } from '../src/http/createApp.js';
 import { sha256Hex } from '../src/lib/auth.js';
 import type { ToolDefinition } from '../src/tools/types.js';
-import { InMemoryAuditLog } from './fakes/inMemoryAuditLog.js';
+import type { InMemoryAuditLog } from './fakes/inMemoryAuditLog.js';
+import { fakeToolDeps } from './fakes/toolDeps.js';
 
 // Test-only tokens; never valid anywhere else.
 export const RESPONDER_TOKEN = 'test-responder-token';
@@ -36,21 +37,24 @@ export interface TestHarness {
   ns: NightshiftApp;
   audit: InMemoryAuditLog;
   clock: { now: number };
+  fakes: ReturnType<typeof fakeToolDeps>;
 }
 
 export function makeHarness(
   overrides: Partial<Config> = {},
   opts: { tools?: readonly ToolDefinition[] } = {},
 ): TestHarness {
-  const audit = new InMemoryAuditLog();
+  const fakes = fakeToolDeps();
+  const { audit } = fakes;
   const clock = { now: Date.parse('2026-10-14T12:00:00Z') };
+  const { now: _now, serverVersion: _version, startedAt: _startedAt, ...external } = fakes.deps;
   const ns = createApp({
     config: testConfig(overrides),
-    deps: { audit },
+    deps: external,
     ...(opts.tools && { tools: opts.tools }),
     now: () => clock.now,
   });
-  return { ns, audit, clock };
+  return { ns, audit, clock, fakes };
 }
 
 const MCP_ACCEPT = 'application/json, text/event-stream';

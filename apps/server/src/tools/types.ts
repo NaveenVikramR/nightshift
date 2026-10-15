@@ -1,12 +1,21 @@
 import type { ToolAnnotations } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
+import type { AlertmanagerClient } from '../clients/alertmanager.js';
+import type { PrometheusClient } from '../clients/prometheus.js';
+import type { AckStore, SilenceStore } from '../db/alertStores.js';
 import type { AuditLog } from '../lib/audit.js';
 import type { Principal } from '../lib/auth.js';
 import type { Role } from '../lib/roles.js';
+import type { ServiceDef } from '../serviceConfig.js';
 
 /** Dependencies shared by every tool (all behind interfaces so tests use fakes). */
 export interface ToolDeps {
   audit: AuditLog;
+  prometheus: PrometheusClient;
+  alertmanager: AlertmanagerClient;
+  services: readonly ServiceDef[];
+  acks: AckStore;
+  silences: SilenceStore;
   now: () => Date;
   serverVersion: string;
   startedAt: Date;

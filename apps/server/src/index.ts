@@ -1,8 +1,12 @@
+import { HttpAlertmanagerClient } from './clients/alertmanager.js';
+import { HttpPrometheusClient } from './clients/prometheus.js';
 import { ConfigError, loadConfig } from './config.js';
+import { PrismaAckStore, PrismaSilenceStore } from './db/alertStores.js';
 import { createPrismaClient } from './db/prisma.js';
 import { PrismaAuditLog } from './db/prismaAuditLog.js';
 import { createApp } from './http/createApp.js';
 import { log } from './lib/log.js';
+import { loadServiceConfig } from './serviceConfig.js';
 import { SERVER_VERSION, TARGET_PROTOCOL_VERSION } from './version.js';
 
 function loadDotEnv(): void {
@@ -29,7 +33,26 @@ async function main(): Promise<void> {
     throw new ConfigError("Can't reach the database at DATABASE_URL. Is it running and migrated?");
   }
 
-  const nightshift = createApp({ config, deps: { audit: new PrismaAuditLog(db) } });
+  const catalog = loadServiceConfig();
+  const nightshift = createApp({
+    config,
+    deps: {
+      audit: new PrismaAuditLog(db),
+      prometheus: new HttpPrometheusClient(catalog.prometheus.url, catalog.prometheus.timeoutMs),
+      alertmanager: new HttpAlertmanagerClient(
+        catalog.alertmanager.url,
+        catalog.alertmanager.timeoutMs,
+      ),
+      services: catalog.services,
+      acks: new PrismaAckStore(db),
+      silences: new PrismaSilenceStore(db),
+    },
+  });
+  log.info('service catalog loaded', {
+    services: catalog.services.map((s) => s.name),
+    prometheus: catalog.prometheus.url,
+    alertmanager: catalog.alertmanager.url,
+  });
 
   const server = nightshift.app.listen(config.port, config.host, () => {
     log.info('nightshift listening', {
