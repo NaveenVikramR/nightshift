@@ -28,8 +28,13 @@ export interface AlertView {
   severity: Severity;
   startsAt: Date;
   silenced: boolean;
-  /** Sanitized identifying labels (for silence matchers and cards). */
+  /** Sanitized labels, safe for cards. */
   labels: Record<string, string>;
+  /**
+   * Original label set, UNTRUSTED. Only ever sent back to Alertmanager as
+   * equality matchers (to silence exactly this alert); never spoken or shown.
+   */
+  rawLabels: Readonly<Record<string, string>>;
   summary: UntrustedText;
   description: UntrustedText;
 }
@@ -54,6 +59,7 @@ export function toAlertView(a: AmAlert, services: readonly NamedService[]): Aler
     startsAt: a.startsAt,
     silenced: a.state === 'suppressed' || a.silencedBy.length > 0,
     labels,
+    rawLabels: { ...a.labels },
     summary: quoteUntrusted(a.annotations['summary']),
     description: quoteUntrusted(a.annotations['description']),
   };
