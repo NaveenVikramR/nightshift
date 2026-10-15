@@ -1,0 +1,25 @@
+{
+  "name": "@nightshift/demo-target",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Simulated payments API exposing Prometheus metrics, with chaos switches. Monitoring target for the Nightshift demo.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node --watch src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3",
+    "vitest": "5.0.4"
+  },
+  "dependencies": {
+    "prom-client": "15.1.3"
+  }
+}

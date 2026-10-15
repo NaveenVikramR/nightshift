@@ -9,19 +9,32 @@
     "node": ">=20.12"
   },
   "workspaces": [
-    "apps/server"
+    "apps/server",
+    "apps/demo-target"
   ],
   "scripts": {
     "dev": "npm run dev -w @nightshift/server",
     "start": "npm run start -w @nightshift/server",
     "build": "npm run build -w @nightshift/server",
-    "test": "npm test -w @nightshift/server",
-    "typecheck": "npm run typecheck -w @nightshift/server",
+    "test": "npm test --workspaces --if-present",
+    "test:integration": "npm run test:integration -w @nightshift/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "seed": "npm run seed -w @nightshift/server",
-    "token:new": "npm run token:new -w @nightshift/server"
+    "token:new": "npm run token:new -w @nightshift/server",
+    "stack:up": "docker compose -f infra/docker-compose.yml up -d --build --wait",
+    "stack:down": "docker compose -f infra/docker-compose.yml down",
+    "stack:logs": "docker compose -f infra/docker-compose.yml logs -f --tail=100",
+    "stack:check": "node infra/scripts/check-config.mjs",
+    "chaos:provider_outage": "node infra/scripts/chaos.mjs provider_outage",
+    "chaos:latency_spike": "node infra/scripts/chaos.mjs latency_spike",
+    "chaos:auth_bruteforce": "node infra/scripts/chaos.mjs auth_bruteforce",
+    "chaos:webhook_spoofing": "node infra/scripts/chaos.mjs webhook_spoofing",
+    "chaos:failover": "node infra/scripts/chaos.mjs route-provider stripe",
+    "chaos:state": "node infra/scripts/chaos.mjs state",
+    "chaos:reset": "node infra/scripts/chaos.mjs reset"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

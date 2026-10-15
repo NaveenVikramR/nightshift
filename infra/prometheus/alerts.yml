@@ -1,0 +1,54 @@
+# Demo alert rules. Every rule carries `service` and `severity` labels and short
+# `summary` / `description` annotations (Nightshift treats annotation text as
+# untrusted data). Short `for` windows keep the demo fast.
+groups:
+  - name: nightshift-demo
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5.."}[1m]))
+            / sum by (service) (rate(http_requests_total[1m])) > 0.05
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.service }} 5xx error rate is {{ $value | humanizePercentage }}'
+          description: 'More than 5% of {{ $labels.service }} requests failed over the last minute.'
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[1m]))) > 1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.service }} p95 latency is {{ $value | humanizeDuration }}'
+          description: '95th percentile latency of {{ $labels.service }} is above 1 second.'
+
+      - alert: CircuitBreakerOpen
+        expr: max by (service, provider) (circuit_breaker_state) == 1
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.service }} circuit breaker to {{ $labels.provider }} is open'
+          description: 'Calls from {{ $labels.service }} to {{ $labels.provider }} are being short-circuited.'
+
+      - alert: AuthFailureSpike
+        expr: sum by (service) (rate(auth_failures_total[1m])) > 2
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.service }} has {{ $value | printf "%.1f" }} failed logins per second'
+          description: 'Failed authentication attempts on {{ $labels.service }} are above 2 per second; possible brute force.'
+
+      - alert: WebhookSignatureFailures
+        expr: sum by (service) (rate(webhook_signature_failures_total[1m])) > 0.5
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.service }} is rejecting webhooks with bad signatures'
+          description: 'More than 0.5 webhooks per second failed HMAC verification on {{ $labels.service }}; possible spoofing.'

@@ -1,0 +1,11 @@
+# Alerts are grouped and held here; Nightshift reads them through the v2 API.
+# Push notifications (Telegram via Nightshift webhook) are added later.
+route:
+  receiver: 'null'
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: 'null'

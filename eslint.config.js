@@ -14,7 +14,11 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/scripts/**', '**/prisma/seed.ts'],
+    files: ['**/scripts/**', '**/prisma/seed.ts', 'apps/demo-target/src/main.ts'],
     rules: { 'no-console': 'off' },
+  },
+  {
+    files: ['**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', fetch: 'readonly' } },
   },
 );
