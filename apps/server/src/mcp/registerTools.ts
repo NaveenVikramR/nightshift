@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/server';
+import { getServiceHealth } from '../tools/get_service_health.js';
 import { listActiveAlerts } from '../tools/list_active_alerts.js';
 import { pingNightshift } from '../tools/ping_nightshift.js';
 import { runTool } from '../tools/runTool.js';
@@ -9,6 +10,7 @@ import { passThroughSchema } from './passThroughSchema.js';
 export const TOOLS: readonly ToolDefinition[] = [
   pingNightshift,
   listActiveAlerts,
+  getServiceHealth,
 ] as unknown as readonly ToolDefinition[];
 
 export function registerTools(
