@@ -1,7 +1,14 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Metrics } from './metrics.ts';
-import { DemoState, isProvider, isScenario, PROVIDERS, SCENARIOS } from './state.ts';
+import {
+  BAD_DEPLOY_DELAY,
+  DemoState,
+  isProvider,
+  isScenario,
+  PROVIDERS,
+  SCENARIOS,
+} from './state.ts';
 
 const MAX_BODY_BYTES = 4096;
 
@@ -43,6 +50,7 @@ export interface DemoServerOptions {
  * GET  /healthz                    liveness
  * GET  /admin/state                (admin) current chaos state
  * POST /admin/chaos/:scenario      (admin) enable a failure scenario
+ *      /admin/chaos/bad_deploy?delaySeconds=60  razorpay starts failing after the delay
  * POST /admin/reset                (admin) clear all scenarios, route back to razorpay
  * POST /admin/route-provider       (admin) {"provider":"stripe"} failover target
  */
@@ -81,7 +89,18 @@ export function createDemoServer({ state, metrics, adminToken }: DemoServerOptio
         if (!isScenario(scenario)) {
           return send(res, 404, { error: 'unknown_scenario', scenarios: SCENARIOS });
         }
-        state.enable(scenario);
+        let delaySeconds: number | undefined;
+        if (scenario === 'bad_deploy' && url.searchParams.has('delaySeconds')) {
+          delaySeconds = Number(url.searchParams.get('delaySeconds'));
+          if (
+            !Number.isInteger(delaySeconds) ||
+            delaySeconds < BAD_DEPLOY_DELAY.min ||
+            delaySeconds > BAD_DEPLOY_DELAY.max
+          ) {
+            return send(res, 400, { error: 'invalid_delay', ...BAD_DEPLOY_DELAY });
+          }
+        }
+        state.enable(scenario, delaySeconds === undefined ? {} : { delaySeconds });
         metrics.updateBreakers(state);
         return send(res, 200, state.snapshot());
       }

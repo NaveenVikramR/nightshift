@@ -50,6 +50,18 @@ describe('demo-target HTTP API', () => {
     expect(await off.json()).toMatchObject({ scenarios: [], downProviders: [] });
   });
 
+  it('arms bad_deploy with a bounded delay', async () => {
+    const res = await admin('/admin/chaos/bad_deploy?delaySeconds=0');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      scenarios: ['bad_deploy'],
+      downProviders: ['razorpay'],
+    });
+    for (const bad of ['-1', '301', '1.5', 'abc']) {
+      expect((await admin(`/admin/chaos/bad_deploy?delaySeconds=${bad}`)).status).toBe(400);
+    }
+  });
+
   it('rejects unknown scenarios and providers', async () => {
     expect((await admin('/admin/chaos/rm_rf')).status).toBe(404);
     const bad = await admin('/admin/route-provider', { body: JSON.stringify({ provider: 'x' }) });
