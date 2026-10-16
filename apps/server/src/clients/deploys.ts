@@ -62,7 +62,10 @@ export function fromStored(row: StoredDeploy): DeployEvent {
     version: row.version,
     commitSha: row.commitSha,
     // Sanitized at ingest; quoted again so the type always says "untrusted".
-    commitMessage: row.commitMessage === null ? null : quoteUntrusted(row.commitMessage),
+    commitMessage:
+      row.commitMessage === null
+        ? null
+        : quoteUntrusted(row.commitMessage, 200, { multiline: true }),
     author: row.author,
     status: STATUSES.has(row.status) ? (row.status as DeployEvent['status']) : 'unknown',
     deployedAt: row.deployedAt,
@@ -179,7 +182,7 @@ export class GitHubDeploySource implements DeploySource {
           environment: sanitizeLabel(d.environment),
           version: githubVersion(d),
           commitSha: SHA.test(d.sha) ? d.sha.toLowerCase() : null,
-          commitMessage: c ? quoteUntrusted(c.message) : null,
+          commitMessage: c ? quoteUntrusted(c.message, 200, { multiline: true }) : null,
           author: sanitizeLabel(c?.author?.name ?? d.creator?.login ?? '') || null,
           status,
           deployedAt,

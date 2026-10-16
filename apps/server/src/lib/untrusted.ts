@@ -27,13 +27,21 @@ export interface UntrustedText {
 }
 
 /**
- * For free text (annotations, log lines): strip control and bidi characters,
- * collapse whitespace, truncate, and mark as untrusted. Goes in `data` only,
- * never in `speak`.
+ * For free text (annotations, log lines, commit messages): strip control and
+ * bidi characters, collapse whitespace, truncate, and mark as untrusted. Goes
+ * in `data` only, never in `speak`. `multiline` keeps one line break between
+ * non-empty lines, so a commit subject stays separate from its body.
  */
-export function quoteUntrusted(value: unknown, maxLength = 200): UntrustedText {
+export function quoteUntrusted(
+  value: unknown,
+  maxLength = 200,
+  opts: { multiline?: boolean } = {},
+): UntrustedText {
   const raw = typeof value === 'string' ? value : '';
-  const clean = raw.replace(UNSAFE_CHARS, ' ').replace(/\s+/g, ' ').trim();
+  const flatten = (s: string) => s.replace(UNSAFE_CHARS, ' ').replace(/\s+/g, ' ').trim();
+  const clean = opts.multiline
+    ? raw.split(/\r?\n/).map(flatten).filter(Boolean).join('\n')
+    : flatten(raw);
   const text = clean.length > maxLength ? `${clean.slice(0, maxLength - 1)}…` : clean;
   return { untrusted: true, text };
 }

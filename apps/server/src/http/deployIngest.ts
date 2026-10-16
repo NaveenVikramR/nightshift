@@ -121,7 +121,10 @@ export function deployIngestHandler(deps: DeployIngestDeps): RequestHandler {
         return;
       }
 
-      const message = d.commitMessage === undefined ? null : quoteUntrusted(d.commitMessage).text;
+      const message =
+        d.commitMessage === undefined
+          ? null
+          : quoteUntrusted(d.commitMessage, 200, { multiline: true }).text;
       const { record, created } = await deps.store.insertOnce({
         source,
         externalId: d.externalId ?? randomUUID(),

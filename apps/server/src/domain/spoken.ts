@@ -49,3 +49,43 @@ export function spokenList(items: readonly string[], conjunction: 'and' | 'or' =
 export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/** 14:41 in the given IANA zone → "2:41" (12-hour clock, no am/pm: voice context gives it). */
+export function spokenClock(at: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(at);
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '';
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '';
+  return `${hour}:${minute}`;
+}
+
+const SPEAKABLE_VERSION = /^v?(\d+(?:\.\d+){1,3})$/i;
+
+/** "v1.4.2" → "version 1.4.2"; anything else (branch names, SHAs) → null, never spoken. */
+export function spokenVersion(version: string): string | null {
+  const m = SPEAKABLE_VERSION.exec(version.trim());
+  return m ? `version ${m[1]}` : null;
+}
+
+const SMALL_NUMBERS = [
+  'zero',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+];
+
+/** 2 → "two", 14 → "14". */
+export function spokenCount(n: number): string {
+  return SMALL_NUMBERS[n] ?? String(n);
+}
