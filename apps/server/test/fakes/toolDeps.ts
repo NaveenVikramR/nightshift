@@ -23,6 +23,7 @@ export const TEST_SERVICES: readonly ServiceDef[] = parseServiceConfig(
           latencyP95: 'payments:latencyP95',
           throughput: 'payments:throughput',
           breakers: 'payments:breakers',
+          authFailures: 'payments:authFailures',
         },
       },
       {
@@ -33,6 +34,7 @@ export const TEST_SERVICES: readonly ServiceDef[] = parseServiceConfig(
           errorRate: 'webhooks:errorRate',
           latencyP95: 'webhooks:latencyP95',
           throughput: 'webhooks:throughput',
+          webhookFailures: 'webhooks:webhookFailures',
         },
       },
     ],
