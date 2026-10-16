@@ -2,20 +2,26 @@
  * Integration test against the local docker stack (demo-target, Prometheus,
  * Alertmanager). Run: npm run stack:up && npm run test:integration
  *
- * Uses the REAL HTTP clients and the real service catalog
- * (config/nightshift.yaml), with in-memory audit/ack/silence stores.
+ * Uses the REAL HTTP clients, the real service catalog (config/nightshift.yaml)
+ * and the real ingest deploy source, with in-memory stores.
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { HttpAlertmanagerClient } from '../../src/clients/alertmanager.js';
+import {
+  DeploySourceRouter,
+  GitHubDeploySource,
+  IngestDeploySource,
+} from '../../src/clients/deploys.js';
 import { HttpPrometheusClient } from '../../src/clients/prometheus.js';
 import { loadServiceConfig } from '../../src/serviceConfig.js';
+import { explainIncident, type ExplainData } from '../../src/tools/explain_incident.js';
 import { getServiceHealth } from '../../src/tools/get_service_health.js';
 import { listActiveAlerts } from '../../src/tools/list_active_alerts.js';
 import type { ToolDefinition, ToolDeps } from '../../src/tools/types.js';
 import { InMemoryAuditLog } from '../fakes/inMemoryAuditLog.js';
-import { FakeDeploys } from '../fakes/fakeDeploys.js';
+import { InMemoryDeployStore } from '../fakes/fakeDeploys.js';
 import {
   InMemoryAckStore,
   InMemoryIncidentStore,
@@ -28,6 +34,7 @@ if (existsSync(infraEnv)) process.loadEnvFile(infraEnv);
 const DEMO = process.env['DEMO_TARGET_URL'] ?? 'http://127.0.0.1:18080';
 const TOKEN = process.env['DEMO_ADMIN_TOKEN'] ?? '';
 
+const deployStore = new InMemoryDeployStore();
 const catalog = loadServiceConfig(resolve(__dirname, '../../config/nightshift.yaml'), process.env);
 const deps: ToolDeps = {
   audit: new InMemoryAuditLog(),
@@ -39,7 +46,10 @@ const deps: ToolDeps = {
   services: catalog.services,
   acks: new InMemoryAckStore(),
   silences: new InMemorySilenceStore(),
-  deploys: new FakeDeploys(),
+  deploys: new DeploySourceRouter({
+    ingest: new IngestDeploySource(deployStore),
+    github: new GitHubDeploySource(catalog.github.apiUrl, undefined, catalog.github.timeoutMs),
+  }),
   incidents: new InMemoryIncidentStore(),
   timeZone: catalog.display.timeZone,
   now: () => new Date(),
@@ -133,5 +143,56 @@ describe('live stack', () => {
       return r.data['status'] === 'healthy' ? r : undefined;
     });
     expect(health.speak).toMatch(/^Payments API is healthy/);
+  });
+
+  it('bad_deploy: explain_incident blames the deploy and the razorpay breaker', async () => {
+    const payments = catalog.services.find((s) => s.name === 'payments-api')!;
+    const deployedAt = new Date();
+    // What POST /events/deploy stores for a CI deploy (the route itself is unit-tested).
+    await deployStore.insertOnce({
+      source: 'integration-ci',
+      externalId: `int-${deployedAt.getTime()}`,
+      service: payments.name,
+      environment: payments.deploys?.environment ?? 'production',
+      version: 'v1.4.2',
+      commitSha: null,
+      commitMessage: 'tune payment retry config',
+      author: 'ci',
+      status: 'success',
+      deployedAt,
+    });
+    await chaos('/admin/chaos/bad_deploy?delaySeconds=20');
+
+    // Wait for alerts that started after this deploy (older ones may still be resolving).
+    await waitFor('bad_deploy alerts to fire', async () => {
+      const fresh = (await deps.alertmanager.listAlerts()).filter(
+        (a) => a.labels['service'] === 'payments-api' && a.startsAt >= deployedAt,
+      );
+      const names = fresh.map((a) => a.labels['alertname']);
+      return names.includes('HighErrorRate') && names.includes('CircuitBreakerOpen')
+        ? true
+        : undefined;
+    });
+
+    const r = await invoke<ExplainData>(
+      explainIncident as unknown as ToolDefinition,
+      deps,
+      { service: 'payments' },
+      BOB,
+    );
+    expect(r.isError).toBe(false);
+    expect(new Set(r.data.causes.slice(0, 2).map((c) => c.id))).toEqual(
+      new Set(['recent_deploy', 'provider_failure']),
+    );
+    const relation = r.data.relations[0]!;
+    expect(relation).toMatchObject({
+      kind: 'breaker_after_deploy',
+      dependency: 'razorpay',
+      version: 'v1.4.2',
+    });
+    expect(Date.parse(relation.openedAt)).toBeGreaterThanOrEqual(deployedAt.getTime());
+    expect(r.speak).toContain('version 1.4.2'); // the recorded version, spoken
+    expect(r.speak).toMatch(/^Critical\./);
+    expect(r.speak.split(/\s+/).length).toBeLessThanOrEqual(30);
   });
 });
