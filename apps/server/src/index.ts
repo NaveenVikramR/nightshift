@@ -4,6 +4,7 @@ import { HttpPrometheusClient } from './clients/prometheus.js';
 import { ConfigError, loadConfig } from './config.js';
 import { PrismaAckStore, PrismaSilenceStore } from './db/alertStores.js';
 import { PrismaDeployStore } from './db/deployStore.js';
+import { PrismaIncidentStore } from './db/incidentStore.js';
 import { createPrismaClient } from './db/prisma.js';
 import { PrismaAuditLog } from './db/prismaAuditLog.js';
 import { createApp } from './http/createApp.js';
@@ -64,6 +65,7 @@ async function main(): Promise<void> {
           catalog.github.timeoutMs,
         ),
       }),
+      incidents: new PrismaIncidentStore(db),
       timeZone: catalog.display.timeZone,
     },
   });

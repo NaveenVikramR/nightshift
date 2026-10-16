@@ -4,6 +4,8 @@ import type { AlertmanagerClient } from '../clients/alertmanager.js';
 import type { DeployEventsClient } from '../clients/deploys.js';
 import type { PrometheusClient } from '../clients/prometheus.js';
 import type { AckStore, SilenceStore } from '../db/alertStores.js';
+import type { IncidentStore } from '../db/incidentStore.js';
+import type { Narrator } from '../domain/correlation/narrator.js';
 import type { AuditLog } from '../lib/audit.js';
 import type { Principal } from '../lib/auth.js';
 import type { Role } from '../lib/roles.js';
@@ -18,6 +20,9 @@ export interface ToolDeps {
   acks: AckStore;
   silences: SilenceStore;
   deploys: DeployEventsClient;
+  incidents: IncidentStore;
+  /** Speaks a diagnosis; default is the deterministic template (an LLM narrator comes later). */
+  narrator?: Narrator;
   /** IANA zone for spoken clock times ("the 2:41 deploy"). */
   timeZone: string;
   now: () => Date;

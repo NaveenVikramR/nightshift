@@ -16,7 +16,11 @@ import { listActiveAlerts } from '../../src/tools/list_active_alerts.js';
 import type { ToolDefinition, ToolDeps } from '../../src/tools/types.js';
 import { InMemoryAuditLog } from '../fakes/inMemoryAuditLog.js';
 import { FakeDeploys } from '../fakes/fakeDeploys.js';
-import { InMemoryAckStore, InMemorySilenceStore } from '../fakes/memoryStores.js';
+import {
+  InMemoryAckStore,
+  InMemoryIncidentStore,
+  InMemorySilenceStore,
+} from '../fakes/memoryStores.js';
 import { BOB, invoke } from '../fakes/toolDeps.js';
 
 const infraEnv = resolve(__dirname, '../../../../infra/.env');
@@ -36,6 +40,7 @@ const deps: ToolDeps = {
   acks: new InMemoryAckStore(),
   silences: new InMemorySilenceStore(),
   deploys: new FakeDeploys(),
+  incidents: new InMemoryIncidentStore(),
   timeZone: catalog.display.timeZone,
   now: () => new Date(),
   serverVersion: 'integration',

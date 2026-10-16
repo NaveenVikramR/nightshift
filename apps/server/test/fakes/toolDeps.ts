@@ -6,7 +6,7 @@ import { FakeAlertmanager } from './fakeAlertmanager.js';
 import { FakeDeploys, InMemoryDeployStore } from './fakeDeploys.js';
 import { FakePrometheus } from './fakePrometheus.js';
 import { InMemoryAuditLog } from './inMemoryAuditLog.js';
-import { InMemoryAckStore, InMemorySilenceStore } from './memoryStores.js';
+import { InMemoryAckStore, InMemoryIncidentStore, InMemorySilenceStore } from './memoryStores.js';
 
 /** Test catalog: queries are short tokens so FakePrometheus answers are easy to script. */
 export const TEST_SERVICES: readonly ServiceDef[] = parseServiceConfig(
@@ -54,6 +54,7 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
   const silences = new InMemorySilenceStore(now);
   const deploys = new FakeDeploys();
   const deployStore = new InMemoryDeployStore(now);
+  const incidents = new InMemoryIncidentStore(now);
   const deps: ToolDeps = {
     audit,
     prometheus,
@@ -62,12 +63,24 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
     acks,
     silences,
     deploys,
+    incidents,
     timeZone: 'UTC',
     now,
     serverVersion: '0.1.0',
     startedAt: new Date('2026-10-16T11:00:00Z'),
   };
-  return { deps, clock, audit, prometheus, alertmanager, acks, silences, deploys, deployStore };
+  return {
+    deps,
+    clock,
+    audit,
+    prometheus,
+    alertmanager,
+    acks,
+    silences,
+    deploys,
+    deployStore,
+    incidents,
+  };
 }
 
 export function authFor(actor: string, role: 'viewer' | 'responder'): AuthInfo {

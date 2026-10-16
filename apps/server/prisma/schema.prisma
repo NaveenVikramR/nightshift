@@ -93,17 +93,22 @@ model DeployEvent {
   @@map("deploy_event")
 }
 
+/// One open incident per service; explain_incident reuses it across sessions.
 model Incident {
-  id         String          @id @default(uuid())
-  title      String
-  severity   String // critical | warning | info
-  status     String          @default("open") // open | resolved
-  service    String?
-  openedAt   DateTime        @default(now())
-  resolvedAt DateTime?
-  events     IncidentEvent[]
+  id           String          @id @default(uuid())
+  title        String
+  severity     String // critical | warning | info
+  status       String          @default("open") // open | resolved
+  service      String?
+  /// Top cause id from the latest diagnosis (recent_deploy, provider_failure, ...).
+  primaryCause String?
+  openedAt     DateTime        @default(now())
+  updatedAt    DateTime        @default(now()) @updatedAt
+  resolvedAt   DateTime?
+  events       IncidentEvent[]
 
   @@index([status, openedAt])
+  @@index([service, status])
   @@map("incident")
 }
 
@@ -111,9 +116,10 @@ model IncidentEvent {
   id         String   @id @default(uuid())
   incidentId String
   incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  kind       String // alert | ack | silence | note | action | deploy
+  kind       String // diagnosis | alert | ack | silence | note | action | deploy
   actor      String?
-  message    String
+  message    String // server-authored; never untrusted text
+  data       Json?
   createdAt  DateTime @default(now())
 
   @@index([incidentId, createdAt])

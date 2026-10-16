@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { acknowledgeAlert } from '../tools/acknowledge_alert.js';
+import { explainIncident } from '../tools/explain_incident.js';
 import { getRecentDeploys } from '../tools/get_recent_deploys.js';
 import { getServiceHealth } from '../tools/get_service_health.js';
 import { listActiveAlerts } from '../tools/list_active_alerts.js';
@@ -13,6 +14,7 @@ import { passThroughSchema } from './passThroughSchema.js';
 export const TOOLS: readonly ToolDefinition[] = [
   pingNightshift,
   listActiveAlerts,
+  explainIncident,
   getServiceHealth,
   getRecentDeploys,
   acknowledgeAlert,
