@@ -90,8 +90,11 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 - `npm run chaos:provider_outage` | `chaos:latency_spike` | `chaos:auth_bruteforce` |
   `chaos:webhook_spoofing` — inject failures into demo-target; `chaos:failover` (route to stripe),
   `chaos:state`, `chaos:reset`
+- `npm run chaos:bad_deploy [-- <delaySeconds>]` — acts as CI: POSTs deploy v1.4.2 to Nightshift
+  (`NIGHTSHIFT_URL` + `NIGHTSHIFT_INGEST_TOKEN` in `infra/.env`), then razorpay fails after 60 s
 - `npm run typecheck` / `npm run lint` / `npm run format` — tsc, ESLint, Prettier
-- `npm run token:new -- <actor> <viewer|responder>` — print a new token + its `NIGHTSHIFT_TOKENS` entry
+- `npm run token:new -- <actor> <viewer|responder>` — print a new token + its `NIGHTSHIFT_TOKENS` entry;
+  `token:new -- <source> ingest` — a CI deploy-ingest token + its `NIGHTSHIFT_INGEST_TOKENS` entry
 - `npm run db:migrate -w @nightshift/server` — `prisma migrate deploy` (apply migrations; use for Neon)
 - `npm run db:migrate:dev -w @nightshift/server` — `prisma migrate dev` (create a new migration after schema edits)
 - `npm run seed` — seed demo data (stub for now: checks DB connectivity)
@@ -108,10 +111,19 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
   tap (observes; audits refusals + unknown tools) → SDK Host guard (403) → exact-origin guard
   (403) → failed-auth limiter (429) → SDK `requireBearerAuth` (401) → session lookup (404) → SDK
   transport. We do NOT use `createMcpExpressApp` (its guards can't be ordered; FL-09).
+- `POST /events/deploy` (`src/http/deployIngest.ts`): Host → Origin → failed-auth limiter → ingest
+  token (`NIGHTSHIFT_INGEST_TOKENS`; MCP tokens rejected, ingest tokens rejected on `/mcp`) → zod
+  body → sanitize → `DeployStore` (idempotent per source + `externalId`). Every request audited
+  (role `ingest`, tool `events/deploy`).
 - Service catalog: `apps/server/config/nightshift.yaml` (path `NIGHTSHIFT_CONFIG`), validated by
   `src/serviceConfig.ts` at startup: Prometheus/Alertmanager URLs (env `PROMETHEUS_URL` /
-  `ALERTMANAGER_URL` override), services with aliases + PromQL per signal + thresholds, and the
-  `scanAssets` allowlist. New apps plug in here only; no app-specific code.
+  `ALERTMANAGER_URL` override), services with aliases + PromQL per signal (incl. optional
+  `authFailures` / `webhookFailures`) + thresholds, `deploys: { source: ingest | github, repo?,
+environment }`, `display.timeZone` (spoken clock times), `github.apiUrl`, and the `scanAssets`
+  allowlist. New apps plug in here only; no app-specific code.
+- Commit messages are untrusted too: stored via `quoteUntrusted(…, { multiline })`, never read by
+  a rule, never spoken by `explain_incident`; only `get_recent_deploys` may speak a first line that
+  passes `speakableCommitLine` (≤ 8 words, safe chars, not instruction-like).
 - Alert label/annotation text is untrusted: `toAlertView` sanitizes identifiers (safe to speak) and
   wraps annotations as `{ untrusted: true, text }` (data only, never spoken). `rawLabels` is used
   only as exact-match silence matchers.
@@ -125,9 +137,9 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 | ----------------------- | ----------------------------------------- | ----------- | -------- |
 | `get_ops_brief`         | read                                      | viewer      |          |
 | `list_active_alerts`    | read                                      | viewer      | ✅ Day 2 |
-| `explain_incident`      | read (core)                               | viewer      |          |
+| `explain_incident`      | read (core)                               | viewer      | ✅ Day 3 |
 | `get_service_health`    | read                                      | viewer      | ✅ Day 2 |
-| `get_recent_deploys`    | read                                      | viewer      |          |
+| `get_recent_deploys`    | read                                      | viewer      | ✅ Day 3 |
 | `acknowledge_alert`     | write (low)                               | responder   | ✅ Day 2 |
 | `silence_alert`         | write (max 4h)                            | responder   | ✅ Day 2 |
 | `prepare_action`        | no side effect, returns `confirmation_id` | responder   |          |
@@ -182,6 +194,12 @@ Every tool returns:
 - Latency up, errors flat → saturation (DB pool / connections); suggest investigation, not action.
 - Errors up, no deploy, no breaker change → "no clear cause found" + top error signatures.
   Each cause returns: `confidence` (0–1), `evidence[]`, `suggested_actions[]`.
+- Also: auth-failure / webhook-signature spike → `possible_attack` (security; investigate only).
+- Pipeline (`src/domain/correlation/`): `evidence.ts` (all sources in parallel, partial failure ok)
+  → `changeDetection.ts` (robust median/MAD baseline, onset = most recent sustained run) →
+  `rules.ts` (`diagnose`, pure; rules never read quoted text) → `speak.ts` (templates, ≤ 30 words)
+  → `narrator.ts` (optional LLM narrator; output rejected if it mentions numbers/times/versions
+  not in the evidence, then the template is spoken). Incidents: one open per service, reused.
 
 ## Security posture checks (v1)
 

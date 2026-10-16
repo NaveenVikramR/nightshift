@@ -52,7 +52,56 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
   redacts the Authorization header in its own output; the model chose the right tool from its
   description alone.
 - **What needs work:** Nothing blocking today.
+- **Day 3 end-to-end ("What's wrong?" then "Why do you think that?"):**
+  - **Choice:** it picked `explain_incident` on its own.
+  - **Answer:** its answer stayed within the returned evidence.
+  - **The follow-up:** it separated what the data showed from what it was guessing, and flagged a real
+    timeline oddity (an earlier staged spike).
+  - **One misreading:** it read our downsampled card points as raw data ("90 s gaps"). We fixed that
+    on our side by labelling the sampling in `data`.
+  - **Lesson:** tool output that will be reasoned over needs to say what it is.
 - **Onboarding:** About 2 minutes.
+- **Would I build with it again?** Yes.
+
+## GitHub REST API (deployments, deployment statuses, Git commits)
+
+- **What I used it for:** An optional deploy-history source for `get_recent_deploys` and
+  `explain_incident`, used when a service sets `deploys: { source: github }`.
+- **What worked well:**
+  - Fine-grained tokens scoped to one repo, read-only.
+  - `X-GitHub-Api-Version` pins behaviour.
+  - Status states map cleanly to success, failure and in progress.
+- **What needs work:** A deployment has no commit message or "went live" time, so N deploys cost
+  1 + 2N calls, and `/commits/{sha}` returns full diffs (FL-12).
+- **Onboarding:** Docs are clear per endpoint, but nothing explains how to get "recent deploys
+  with messages" end to end.
+- **Would I build with it again?** Yes, but most teams will find CI-pushed deploy events (our
+  `POST /events/deploy`) simpler and cheaper.
+
+## Prometheus 3.15 (HTTP API: instant and range queries)
+
+- **What I used it for:**
+  - `/api/v1/query` for live health.
+  - `/api/v1/query_range` (60 min at 30 s steps) as evidence for change detection.
+- **What worked well:** It's one API for any app. Plugging in another app only means writing
+  PromQL in the catalog.
+- **What needs work:**
+  - `rate(...[1m])` makes error onsets trail the real change by up to about 30 s, so correlation
+    has to allow for that.
+  - `histogram_quantile` over idle windows returns `NaN` (as a string), so every consumer must
+    drop non-finite values.
+- **Onboarding:** About 30 minutes, including the compose stack.
+- **Would I build with it again?** Yes.
+
+## Alertmanager 0.34 (API v2)
+
+- **What I used it for:** Listing active alerts, and creating silences for `silence_alert`.
+- **What worked well:** Fingerprints are stable, silences are easy to create, and `silencedBy` makes
+  state obvious.
+- **What needs work:** There's no acknowledgement concept, so ack lives in our database. Alert
+  annotations are free text that the API passes through unescaped, and we must treat them as
+  untrusted.
+- **Onboarding:** About 15 minutes.
 - **Would I build with it again?** Yes.
 
 ## Prisma ORM 7.10.0 (+ `@prisma/adapter-pg`, `prisma dev`)

@@ -145,3 +145,33 @@
 - **Time lost:** ~90 minutes
 - **Workaround:** Restarted Docker Desktop, which picked up the original disk. Added `npm run stack:status` (container health + port probes) and a preflight to `npm run test:integration` that prints `stack not running (…) — run npm run stack:up` instead of three skipped tests.
 - **Suggestion:** When Docker Desktop starts on a data disk that is new or different from the last run, show it in the dashboard and in `docker info` (e.g. `Data disk: C:\…\docker_data.vhdx (created just now)`), and offer to move the existing disk instead of starting empty.
+
+## FL-11: `prisma migrate diff --from-migrations` needs a shadow database, and the error names the wrong config file
+
+- **Date:** 2026-10-17
+- **Product / tool:** Prisma CLI 7.10.0
+- **Task attempted:** Generate the SQL for a new migration without a running database (same approach as the first migration).
+- **Steps taken:**
+  1. Edited `prisma/schema.prisma` (new `DeployEvent` model).
+  2. Ran `npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script`.
+- **Expected:** The SQL difference between the existing migrations and the edited schema.
+- **Actual:** ``Error: You must set `datasource.shadowDatabaseUrl` in your `prisma.config.ts` if you want to diff a migrations directory.`` The loaded config file is `prisma7.config.ts` (the name `prisma init` itself writes, see FL-03), so the message points at a file that doesn't exist.
+- **Severity:** Low
+- **Time lost:** ~10 minutes
+- **Workaround:** Diff from the last committed schema instead: `git show HEAD:apps/server/prisma/schema.prisma > old.prisma`, then `prisma migrate diff --from-schema old.prisma --to-schema prisma/schema.prisma --script`. No database needed.
+- **Suggestion:** Name the config file that was actually loaded in the error, and mention the `--from-schema` alternative in it (or in the `migrate diff` docs) for teams without a shadow database.
+
+## FL-12: GitHub deployments don't carry the commit message or when they went live
+
+- **Date:** 2026-10-17
+- **Product / tool:** GitHub REST API (`2022-11-28`): deployments, deployment statuses, Git commits
+- **Task attempted:** List a service's recent deploys with version, deploy time, author and commit message for incident correlation.
+- **Steps taken:**
+  1. `GET /repos/{owner}/{repo}/deployments?environment=production`.
+  2. Per deployment: `GET …/deployments/{id}/statuses?per_page=1` for when it actually succeeded, and a commit lookup for the message.
+- **Expected:** One list call returning each deployment's latest state and commit summary.
+- **Actual:** A deployment has only `sha`, `ref`, `created_at` and `creator`. The time it went live is on its statuses, and the message is on the commit, so N deploys cost 1 + 2N requests. `GET /repos/{o}/{r}/commits/{sha}` also returns the full file diff. The Git Database endpoint (`/git/commits/{sha}`) returns just message and author, but the deployments docs don't point to it.
+- **Severity:** Low
+- **Time lost:** ~20 minutes
+- **Workaround:** Capped at 10 deployments; statuses and commits fetched in parallel through `/git/commits/{sha}`; a failed per-deployment call degrades that one deploy instead of the list.
+- **Suggestion:** Add an `include=latest_status,commit` option (or `latest_status` and `commit.message` fields) to the deployments list, so one call answers "what was deployed, when did it go live, and what changed".

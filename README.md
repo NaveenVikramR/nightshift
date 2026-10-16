@@ -4,10 +4,11 @@ Nightshift is a voice on-call and security copilot for small engineering teams: 
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
 take safe, explicitly confirmed actions.
 
-> Status: **Day 2.** Transport, auth, roles, database and audit log, plus five tools:
-> `ping_nightshift`, `list_active_alerts`, `get_service_health`, `acknowledge_alert` and
-> `silence_alert`, running against a local Prometheus + Alertmanager stack. Incident diagnosis,
-> two-phase remediation and security posture land next.
+> Status: **Day 3.** Transport, auth, roles, database and audit log, plus seven tools:
+> `ping_nightshift`, `list_active_alerts`, `get_service_health`, `acknowledge_alert`,
+> `silence_alert`, `get_recent_deploys` and `explain_incident` (grounded incident diagnosis),
+> running against a local Prometheus + Alertmanager stack with deploy history from CI or GitHub.
+> Two-phase remediation and security posture land next.
 
 ## Prerequisites
 
@@ -62,25 +63,26 @@ npm run stack:up                   # builds demo-target, starts all three, waits
 npm run stack:check                # optional: promtool / amtool validation of the configs
 ```
 
-| Service      | URL (localhost only)      |
-| ------------ | ------------------------- |
-| demo-target  | http://127.0.0.1:18080    |
-| Prometheus   | http://127.0.0.1:9090     |
-| Alertmanager | http://127.0.0.1:9093     |
+| Service      | URL (localhost only)   |
+| ------------ | ---------------------- |
+| demo-target  | http://127.0.0.1:18080 |
+| Prometheus   | http://127.0.0.1:9090  |
+| Alertmanager | http://127.0.0.1:9093  |
 
 demo-target uses host port **18080** because 8080 is often taken by a local web server; change
 `DEMO_TARGET_PORT` / `DEMO_TARGET_URL` in `infra/.env` if needed.
 
 **Chaos scenarios** (each takes 15–45 s to turn into a firing alert):
 
-| Command                          | What breaks                                         | Alerts that fire                      |
-| -------------------------------- | --------------------------------------------------- | ------------------------------------- |
-| `npm run chaos:provider_outage`  | Razorpay is down: its breaker opens, charges fail   | `CircuitBreakerOpen`, `HighErrorRate` |
-| `npm run chaos:latency_spike`    | 80% of payments requests take 1.2–3 s               | `HighLatencyP95`                      |
-| `npm run chaos:auth_bruteforce`  | ~20 failed logins per second                        | `AuthFailureSpike`                    |
-| `npm run chaos:webhook_spoofing` | ~4 forged webhooks per second fail HMAC             | `WebhookSignatureFailures`            |
-| `npm run chaos:failover`         | Route payments to Stripe (what failover will do)    | `HighErrorRate` clears                |
-| `npm run chaos:reset`            | Back to healthy (scenarios off, Razorpay active)    | everything resolves                   |
+| Command                          | What breaks                                                         | Alerts that fire                      |
+| -------------------------------- | ------------------------------------------------------------------- | ------------------------------------- |
+| `npm run chaos:provider_outage`  | Razorpay is down: its breaker opens, charges fail                   | `CircuitBreakerOpen`, `HighErrorRate` |
+| `npm run chaos:latency_spike`    | 80% of payments requests take 1.2–3 s                               | `HighLatencyP95`                      |
+| `npm run chaos:auth_bruteforce`  | ~20 failed logins per second                                        | `AuthFailureSpike`                    |
+| `npm run chaos:webhook_spoofing` | ~4 forged webhooks per second fail HMAC                             | `WebhookSignatureFailures`            |
+| `npm run chaos:bad_deploy`       | Reports deploy v1.4.2 to Nightshift, then Razorpay fails 60 s later | `CircuitBreakerOpen`, `HighErrorRate` |
+| `npm run chaos:failover`         | Route payments to Stripe (what failover will do)                    | `HighErrorRate` clears                |
+| `npm run chaos:reset`            | Back to healthy (scenarios off, Razorpay active)                    | everything resolves                   |
 
 `npm run chaos:state` shows what is active. `npm run stack:down` stops the stack.
 
@@ -89,7 +91,53 @@ demo-target uses host port **18080** because 8080 is often taken by a local web 
 Nightshift has no app-specific code. Edit `apps/server/config/nightshift.yaml`: point
 `prometheus.url` / `alertmanager.url` at your stack (or set `PROMETHEUS_URL` / `ALERTMANAGER_URL`),
 and list your services with aliases, one PromQL per signal (error rate, p95 latency, throughput,
-optional circuit breakers) and thresholds. Alerts must carry `service` and `severity` labels.
+optional circuit breakers, optional auth and webhook failure rates) and thresholds. Alerts must
+carry `service` and `severity` labels. Set `display.timeZone` for spoken clock times.
+
+### Deploy history
+
+Each service picks a source in `nightshift.yaml` (`deploys: { source: ingest | github }`).
+
+**From any CI system (`ingest`).** Create an ingest token (it works only on this endpoint, never
+on `/mcp`), put its JSON entry in `NIGHTSHIFT_INGEST_TOKENS`, and add a step after each deploy:
+
+```bash
+npm run token:new -- github-actions ingest
+curl -fsS -X POST "$NIGHTSHIFT_URL/events/deploy" \
+  -H "Authorization: Bearer $NIGHTSHIFT_INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"service":"payments-api","version":"v1.4.2","commitSha":"'"$GITHUB_SHA"'","commitMessage":"tune payment retry config","author":"ci","externalId":"run-'"$GITHUB_RUN_ID"'"}'
+```
+
+`externalId` makes retries idempotent. Commit messages are stored sanitized and treated as untrusted
+data. `chaos:bad_deploy` uses this same endpoint (set `NIGHTSHIFT_INGEST_TOKEN` in `infra/.env`).
+
+**From GitHub (`github`).** Set `deploys: { source: github, repo: owner/name, environment:
+production }` and `GITHUB_TOKEN` (a fine-grained token on that repo with read-only Deployments,
+Contents and Metadata). Nightshift reads deployments, their latest status and the commit.
+
+### How `explain_incident` decides
+
+Deterministic rules over collected evidence (an LLM never decides the cause):
+
+1. **Evidence:** for the alerted service, in parallel with timeouts: firing alerts, 60 minutes of
+   error rate, p95 latency, throughput, breaker states and auth/webhook failure rates (30 s steps),
+   and deploys from 10 minutes before the window. If a source is down, Nightshift says so and
+   continues.
+2. **Change detection:** onset = the start of the most recent sustained rise above
+   `max(median + 3 × MAD, threshold)`.
+3. **Rules → causes**, each with confidence, evidence (real timestamps, values, versions) and
+   suggested actions:
+   - a deploy within ±10 minutes of the onset suggests `rollback_deploy`;
+   - one provider breaker open suggests `failover_provider`;
+   - latency up with errors flat is saturation (investigate);
+   - an auth or webhook-signature spike is a possible attack (investigate, never automated);
+   - otherwise "no clear cause".
+4. **Speech:** templates, at most 30 words, e.g. _"Critical. Payments API errors at 58 percent for 1
+   minute. The Razorpay breaker opened right after the 1:16 deploy, version 1.4.2. I can fail over to
+   Stripe or roll back."_ Commit messages and alert text are never spoken here.
+
+Each diagnosis opens or updates the service's open incident in Postgres.
 
 ## Test
 
