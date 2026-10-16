@@ -47,8 +47,13 @@ export interface SeriesSummary {
   onset: string | null;
   peak: { at: string; value: number } | null;
   last: { at: string; value: number } | null;
-  /** Downsampled [isoTime, value] pairs for the incident card. */
+  /**
+   * [isoTime, value] pairs for the incident card. DOWNSAMPLED: every
+   * `sampling.keptEvery`-th of `sampling.rawPoints` points (the analysis above
+   * used all of them), so gaps between these points are not missing data.
+   */
   points: [string, number][];
+  sampling: { rawPoints: number; keptEvery: number };
 }
 
 export interface ExplainData {
@@ -71,11 +76,14 @@ export interface ExplainData {
   narrator: { name: string; rejected?: string };
 }
 
-function downsample(points: readonly Point[]): [string, number][] {
+function downsample(points: readonly Point[]): Pick<SeriesSummary, 'points' | 'sampling'> {
   const every = Math.max(1, Math.ceil(points.length / MAX_CARD_POINTS));
-  return points
-    .filter((_, i) => i % every === 0 || i === points.length - 1)
-    .map((p) => [p.time.toISOString(), Number(p.value.toFixed(4))]);
+  return {
+    points: points
+      .filter((_, i) => i % every === 0 || i === points.length - 1)
+      .map((p) => [p.time.toISOString(), Number(p.value.toFixed(4))]),
+    sampling: { rawPoints: points.length, keptEvery: every },
+  };
 }
 
 function summarize(o: OnsetResult, points: readonly Point[]): SeriesSummary {
@@ -87,7 +95,7 @@ function summarize(o: OnsetResult, points: readonly Point[]): SeriesSummary {
       onset: null,
       peak: null,
       last: null,
-      points: downsample(points),
+      ...downsample(points),
     };
   }
   return {
@@ -96,7 +104,7 @@ function summarize(o: OnsetResult, points: readonly Point[]): SeriesSummary {
     onset: o.kind === 'spike' ? o.onset.time.toISOString() : null,
     peak: at(o.peak),
     last: at(o.last),
-    points: downsample(points),
+    ...downsample(points),
   };
 }
 
@@ -228,7 +236,7 @@ function toData(
       onset: null,
       peak: null,
       last: { at: last.time.toISOString(), value: Number(last.value.toFixed(4)) },
-      points: downsample(tp),
+      ...downsample(tp),
     };
   }
   return {

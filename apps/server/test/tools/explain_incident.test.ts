@@ -72,6 +72,7 @@ describe('explain_incident', () => {
       onset: '2026-10-16T11:56:30.000Z',
     });
     expect(r.data.series['errorRate']!.points.length).toBeLessThanOrEqual(61);
+    expect(r.data.series['errorRate']!.sampling).toEqual({ rawPoints: 121, keptEvery: 3 });
     expect(r.data.series['throughput']).toMatchObject({ kind: 'context' });
     expect(r.data.breakers).toContainEqual({
       dependency: 'razorpay',
