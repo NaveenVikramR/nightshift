@@ -46,7 +46,7 @@ describe('get_service_health', () => {
     const f = payments({ errorRate: 0.63, razorpay: 1 });
     const r = await invoke(tool, f.deps, { service: 'the payment api' }, BOB);
     expect(r.speak).toBe(
-      'Critical: payments API has errors at 63 percent and razorpay breaker open. Ask me what alerts are firing.',
+      'Critical: payments API has errors at 63 percent and razorpay breaker open. Ask me why.',
     );
     expectSpeakable(r.speak);
     expect(r.data['status']).toBe('critical');

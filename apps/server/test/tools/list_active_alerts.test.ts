@@ -26,7 +26,7 @@ describe('list_active_alerts', () => {
     const r = await invoke(tool, f.deps, {}, BOB);
     expect(r.isError).toBe(false);
     expect(r.speak).toBe(
-      'Critical: 3 alerts are firing. Worst is high error rate on payments API, started 2 minutes ago, not acknowledged. Ask me how the service is doing.',
+      'Critical: 3 alerts are firing. Worst is high error rate on payments API, started 2 minutes ago, not acknowledged. Ask me why.',
     );
     expectSpeakable(r.speak);
     expect(r.data).toMatchObject({ total: 3, service: null });
@@ -48,7 +48,7 @@ describe('list_active_alerts', () => {
     const f = outage();
     const r = await invoke(tool, f.deps, { service: 'webhooks' }, BOB);
     expect(r.speak).toBe(
-      'Warning: webhook signature failures on webhook receiver, started 3 minutes ago, not acknowledged. Ask me how the service is doing.',
+      'Warning: webhook signature failures on webhook receiver, started 3 minutes ago, not acknowledged. Ask me why.',
     );
     expect(r.data['total']).toBe(1);
   });

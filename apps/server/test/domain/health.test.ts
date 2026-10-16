@@ -85,9 +85,15 @@ describe('speakHealth', () => {
       breakers: [{ dependency: 'razorpay', state: 'open' }],
     });
     expect(s).toBe(
-      'Critical: payments API has errors at 63 percent and razorpay breaker open. Ask me what alerts are firing.',
+      'Critical: payments API has errors at 63 percent and razorpay breaker open. Ask me why.',
     );
     expect(countWords(s)).toBeLessThanOrEqual(30);
+  });
+
+  it('degraded also points at explain_incident', () => {
+    expect(speak({ ...healthy, latencyP95Seconds: 2.2 })).toBe(
+      'Degraded: payments API has p95 latency 2.2 seconds. Ask me why.',
+    );
   });
 
   it('says "no data" instead of inventing a value', () => {

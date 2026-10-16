@@ -113,7 +113,7 @@ export const listActiveAlerts: ToolDefinition<typeof inputSchema, ListAlertsData
         matching.length === 1
           ? `${severity}: ${describeAlert(worst)}, started ${spokenAgo(worst.startsAt, now)}, ${ackText}.`
           : `${severity}: ${count} firing${scope}. Worst is ${describeAlert(worst)}, started ${spokenAgo(worst.startsAt, now)}, ${ackText}.`;
-      const next = worst.service ? ' Ask me how the service is doing.' : '';
+      const next = worst.service ? ' Ask me why.' : '';
       return { speak: `${lead}${next}`, data };
     },
   };

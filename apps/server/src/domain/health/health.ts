@@ -118,6 +118,7 @@ export function speakHealth(displayName: string, s: HealthSignals, a: HealthAsse
   }
   const label = a.status === 'critical' ? 'Critical' : 'Degraded';
   const reasons = spokenList(a.reasons.slice(0, 3).map((r) => r.spoken));
-  const next = a.status === 'critical' ? ' Ask me what alerts are firing.' : ' Worth a look soon.';
+  // explain_incident answers "why" for both critical and degraded.
+  const next = ' Ask me why.';
   return `${label}: ${name} has ${reasons}.${noData}${next}`;
 }
