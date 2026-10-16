@@ -10,9 +10,14 @@ export interface Point {
   value: number;
 }
 
+/**
+ * Robust baseline: median and scaled MAD (median absolute deviation × 1.4826,
+ * which equals the standard deviation for normal noise). A short earlier
+ * spike inside the baseline window cannot drag it up the way a mean would.
+ */
 export interface Baseline {
-  mean: number;
-  std: number;
+  level: number;
+  spread: number;
   /** How many points the baseline was computed from. */
   points: number;
 }
@@ -24,7 +29,7 @@ interface Summary {
 }
 
 export type OnsetResult =
-  /** A sustained rise: `onset` is the first point of the first sustained run above `threshold`. */
+  /** A sustained rise: `onset` is the first point of the MOST RECENT sustained run above `threshold`. */
   | ({ kind: 'spike'; onset: Point; threshold: number } & Summary)
   /** No sustained rise above the threshold. */
   | ({ kind: 'flat'; threshold: number } & Summary)
@@ -36,7 +41,7 @@ export type OnsetResult =
 export interface OnsetOptions {
   /** Absolute floor for the threshold, usually the service's alert threshold. */
   minAbsolute: number;
-  /** Threshold = max(baseline mean + k * std, minAbsolute). */
+  /** Threshold = max(baseline level + k * spread, minAbsolute). */
   k?: number;
   /** Consecutive points above the threshold needed to count as a spike. */
   sustain?: number;
@@ -55,10 +60,17 @@ export function finitePoints(points: readonly Point[]): Point[] {
     .sort((a, b) => a.time.getTime() - b.time.getTime());
 }
 
-function meanStd(values: readonly number[]): { mean: number; std: number } {
-  const mean = values.reduce((s, v) => s + v, 0) / values.length;
-  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
-  return { mean, std: Math.sqrt(variance) };
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+const MAD_TO_STD = 1.4826;
+
+function robustBaseline(values: readonly number[]): { level: number; spread: number } {
+  const level = median(values);
+  return { level, spread: MAD_TO_STD * median(values.map((v) => Math.abs(v - level))) };
 }
 
 /** Median spacing between points (ms); robust to a few gaps. */
@@ -74,13 +86,18 @@ function maxPoint(points: readonly Point[]): Point {
   return points.reduce((best, p) => (p.value > best.value ? p : best));
 }
 
-/** First point of the first run of >= `sustain` consecutive points above `threshold`. */
-function firstSustainedRun(
+/**
+ * Index of the first point of the most recent run of >= `sustain`
+ * consecutive points above `threshold` (the current incident, not an older
+ * one earlier in the window).
+ */
+function latestSustainedRun(
   points: readonly Point[],
   threshold: number,
   sustain: number,
   maxGapMs: number,
 ): number | undefined {
+  let latest: number | undefined;
   let runStart: number | undefined;
   let runLength = 0;
   for (let i = 0; i < points.length; i++) {
@@ -93,22 +110,23 @@ function firstSustainedRun(
       } else {
         runLength++;
       }
-      if (runLength >= sustain) return runStart;
+      if (runLength >= sustain) latest = runStart;
     } else {
       runStart = undefined;
       runLength = 0;
     }
   }
-  return undefined;
+  return latest;
 }
 
 /**
  * When did this series start rising? Deterministic:
- * - baseline = mean and std of the first `baselineFraction` of the window
- *   (at least `minBaselinePoints` points)
- * - baseline mean already above `minAbsolute` → elevated_at_start
- * - threshold = max(mean + k * std, minAbsolute); onset = first point of the
- *   first run of `sustain` points above it (a gap > `maxGapSteps` breaks a run)
+ * - baseline = median and scaled MAD of the first `baselineFraction` of the
+ *   window (at least `minBaselinePoints` points)
+ * - baseline level already above `minAbsolute` → elevated_at_start
+ * - threshold = max(level + k * spread, minAbsolute); onset = first point of
+ *   the most recent run of `sustain` points above it (a gap > `maxGapSteps`
+ *   breaks a run)
  * - if the baseline itself is noisy enough to hide a rise that ends above
  *   `minAbsolute`, the run is searched again against `minAbsolute` alone
  */
@@ -123,20 +141,20 @@ export function detectOnset(raw: readonly Point[], options: OnsetOptions): Onset
     o.minBaselinePoints,
     Math.floor(points.length * o.baselineFraction),
   );
-  const { mean, std } = meanStd(points.slice(0, baselineSize).map((p) => p.value));
-  const baseline: Baseline = { mean, std, points: baselineSize };
+  const { level, spread } = robustBaseline(points.slice(0, baselineSize).map((p) => p.value));
+  const baseline: Baseline = { level, spread, points: baselineSize };
   const last = points[points.length - 1]!;
 
-  if (mean > o.minAbsolute) {
+  if (level > o.minAbsolute) {
     return { kind: 'elevated_at_start', baseline, peak: maxPoint(points), last };
   }
 
   const maxGapMs = typicalStepMs(points) * (o.maxGapSteps + 0.5);
-  const threshold = Math.max(mean + o.k * std, o.minAbsolute);
-  let start = firstSustainedRun(points, threshold, o.sustain, maxGapMs);
+  const threshold = Math.max(level + o.k * spread, o.minAbsolute);
+  let start = latestSustainedRun(points, threshold, o.sustain, maxGapMs);
   let used = threshold;
   if (start === undefined && last.value > o.minAbsolute) {
-    start = firstSustainedRun(points, o.minAbsolute, o.sustain, maxGapMs);
+    start = latestSustainedRun(points, o.minAbsolute, o.sustain, maxGapMs);
     used = o.minAbsolute;
   }
   if (start === undefined) {

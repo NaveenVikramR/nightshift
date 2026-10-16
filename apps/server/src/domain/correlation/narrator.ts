@@ -111,7 +111,7 @@ export function allowedTokens(d: Diagnosis, ctx: SpeakContext): Set<string> {
   for (const [signal, o] of Object.entries(d.facts.onsets)) {
     if (!o || o.kind === 'insufficient_data') continue;
     const unit = SIGNAL_UNIT[signal] ?? 'plain';
-    for (const v of [o.baseline.mean, o.peak.value, o.last.value]) add(numberForms(v, unit));
+    for (const v of [o.baseline.level, o.peak.value, o.last.value]) add(numberForms(v, unit));
     if (o.kind === 'spike') dates.push(o.onset.time);
   }
   for (const r of d.relations) {

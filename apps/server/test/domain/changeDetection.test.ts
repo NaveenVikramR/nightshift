@@ -13,7 +13,7 @@ describe('detectOnset', () => {
     expect(r.kind).toBe('spike');
     if (r.kind !== 'spike') return;
     expect(r.onset.time).toEqual(at(5));
-    expect(r.baseline.mean).toBeCloseTo(0.005);
+    expect(r.baseline.level).toBeCloseTo(0.005);
     expect(r.peak.value).toBeCloseTo(0.4);
     expect(r.last.value).toBeCloseTo(0.4);
   });
@@ -66,6 +66,29 @@ describe('detectOnset', () => {
       opts,
     );
     expect(r.kind).toBe('flat');
+  });
+
+  it('picks the current (most recent) spike, not an older recovered one', () => {
+    const r = detectOnset(
+      series(END, N, (_i, t) => {
+        const m = (END.getTime() - t.getTime()) / 60_000;
+        return (m <= 40 && m > 35) || m <= 4 ? 0.45 : 0.005;
+      }),
+      opts,
+    );
+    expect(r).toMatchObject({ kind: 'spike', onset: { time: at(4) } });
+  });
+
+  it('a short old spike inside the baseline window does not make it "elevated"', () => {
+    const r = detectOnset(
+      series(END, N, (_i, t) => {
+        const m = (END.getTime() - t.getTime()) / 60_000;
+        return (m <= 55 && m > 51) || m <= 3 ? 0.45 : 0.005;
+      }),
+      opts,
+    );
+    expect(r).toMatchObject({ kind: 'spike', onset: { time: at(3) } });
+    if (r.kind === 'spike') expect(r.baseline.level).toBeCloseTo(0.005);
   });
 
   it('needs enough points', () => {

@@ -143,10 +143,10 @@ function onsetItem(signal: SignalName, o: OnsetResult, unit: (v: number) => stri
     return {
       kind: 'metric_onset',
       at: iso(o.onset.time),
-      text: `${signal} rose from a baseline of ${unit(o.baseline.mean)} to ${unit(o.peak.value)} starting ${iso(o.onset.time)}; now ${unit(o.last.value)}.`,
+      text: `${signal} rose from a baseline of ${unit(o.baseline.level)} to ${unit(o.peak.value)} starting ${iso(o.onset.time)}; now ${unit(o.last.value)}.`,
       values: {
         signal,
-        baseline: round(o.baseline.mean),
+        baseline: round(o.baseline.level),
         peak: round(o.peak.value),
         current: round(o.last.value),
         onset: iso(o.onset.time),
@@ -166,12 +166,12 @@ function onsetItem(signal: SignalName, o: OnsetResult, unit: (v: number) => stri
     at: iso(o.last.time),
     text:
       o.kind === 'elevated_at_start'
-        ? `${signal} was already at ${unit(o.baseline.mean)} when the window started; now ${unit(o.last.value)}.`
-        : `${signal} stayed flat around ${unit(o.baseline.mean)}; now ${unit(o.last.value)}.`,
+        ? `${signal} was already at ${unit(o.baseline.level)} when the window started; now ${unit(o.last.value)}.`
+        : `${signal} stayed flat around ${unit(o.baseline.level)}; now ${unit(o.last.value)}.`,
     values: {
       signal,
       level: o.kind,
-      baseline: round(o.baseline.mean),
+      baseline: round(o.baseline.level),
       current: round(o.last.value),
     },
   };

@@ -92,7 +92,7 @@ function summarize(o: OnsetResult, points: readonly Point[]): SeriesSummary {
   }
   return {
     kind: o.kind,
-    baseline: Number(o.baseline.mean.toFixed(4)),
+    baseline: Number(o.baseline.level.toFixed(4)),
     onset: o.kind === 'spike' ? o.onset.time.toISOString() : null,
     peak: at(o.peak),
     last: at(o.last),
