@@ -129,3 +129,19 @@
 - **Time lost:** ~15 minutes
 - **Workaround:** Built a plain Express app from the exported pieces in an explicit order: `express.json({limit})` → audit tap → `hostHeaderValidation()` / `localhostHostValidation()` → exact-origin guard → `requireBearerAuth()`.
 - **Suggestion:** Document the middleware `createMcpExpressApp` installs (and its order) in the README, and accept an optional `beforeGuards: RequestHandler[]` option.
+
+## FL-10: Docker Desktop came up on an empty data disk after the disk image location changed
+
+- **Date:** 2026-10-16
+- **Product / tool:** Docker Desktop 4.89.0 (Engine 29.7.2), WSL 2 backend, Windows 10
+- **Task attempted:** Check that the local demo stack (demo-target, Prometheus, Alertmanager) was still healthy before an end-to-end test.
+- **Steps taken:**
+  1. Docker Desktop's disk image location setting was changed (`CustomWslDistroDir` → `D:\DockerDesktopWSL`). Data had been on that disk since September.
+  2. Ran `docker ps`, `docker ps -a`, `docker images` and `docker volume ls`.
+  3. Read the Docker Desktop logs (`%LOCALAPPDATA%\Docker\log`) and compared `docker_data.vhdx` timestamps.
+- **Expected:** The same images, containers and volumes, or a clear warning that Docker was starting on a new, empty disk.
+- **Actual:** All four commands returned nothing, as if everything had been deleted. Docker Desktop had created a new 1.6 GB `docker_data.vhdx` under `C:\Users\…\AppData\Local\Docker\wsl\disk` and was running on it. The original 5 GB disk sat untouched on D:. Nothing in the UI or CLI said which disk was active. A `docker system prune -a` 6 minutes earlier looked like the cause but wasn't (running containers survive it). After Docker Desktop quit and restarted, it used the D: disk again and everything reappeared.
+- **Severity:** High
+- **Time lost:** ~90 minutes
+- **Workaround:** Restarted Docker Desktop, which picked up the original disk. Added `npm run stack:status` (container health + port probes) and a preflight to `npm run test:integration` that prints `stack not running (…) — run npm run stack:up` instead of three skipped tests.
+- **Suggestion:** When Docker Desktop starts on a data disk that is new or different from the last run, show it in the dashboard and in `docker info` (e.g. `Data disk: C:\…\docker_data.vhdx (created just now)`), and offer to move the existing disk instead of starting empty.

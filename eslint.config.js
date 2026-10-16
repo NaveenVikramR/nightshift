@@ -22,6 +22,13 @@ export default tseslint.config(
   },
   {
     files: ['**/*.mjs'],
-    languageOptions: { globals: { process: 'readonly', console: 'readonly', fetch: 'readonly' } },
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+      },
+    },
   },
 );

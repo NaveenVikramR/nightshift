@@ -74,6 +74,21 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **Onboarding:** About 20 minutes, including the v7 adapter and config changes.
 - **Would I build with it again?** Yes. Migrations and the typed client are worth it.
 
+## Docker Desktop 4.89.0 (WSL 2 backend)
+
+- **What I used it for:** Running the local demo stack (demo-target, Prometheus, Alertmanager)
+  with `docker compose`, and the `promtool` / `amtool` config checks.
+- **What worked well:**
+  - `docker compose up --wait` with healthchecks gives a reliable "stack is ready" signal.
+  - `restart: unless-stopped` brought the containers back by itself after Docker restarted.
+- **What needs work:**
+  - After the disk image location changed, Docker ran on a new empty disk with no warning, so the
+    stack looked deleted (FL-10).
+  - The engine hung when the C: drive filled up, with no clear error.
+- **Onboarding:** Already installed; writing the compose stack took about 30 minutes.
+- **Would I build with it again?** Yes for local stacks, but I now run `npm run stack:status`
+  before trusting it.
+
 ## AWS services
 
 Not used yet (Bedrock, Polly and App Runner arrive with the Alexa+ simulator and deployment).

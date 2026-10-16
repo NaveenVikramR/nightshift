@@ -28,6 +28,7 @@
     "stack:down": "docker compose -f infra/docker-compose.yml down",
     "stack:logs": "docker compose -f infra/docker-compose.yml logs -f --tail=100",
     "stack:check": "node infra/scripts/check-config.mjs",
+    "stack:status": "node infra/scripts/stack-status.mjs",
     "chaos:provider_outage": "node infra/scripts/chaos.mjs provider_outage",
     "chaos:latency_spike": "node infra/scripts/chaos.mjs latency_spike",
     "chaos:auth_bruteforce": "node infra/scripts/chaos.mjs auth_bruteforce",
