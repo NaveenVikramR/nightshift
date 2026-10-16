@@ -80,7 +80,16 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 - `npm install` — install everything; also runs `prisma generate` (client → `apps/server/src/generated/`)
 - `npm run dev` — start server with tsx watch on `http://127.0.0.1:3000/mcp` (needs `DATABASE_URL`)
 - `npm run build && npm start` — compile with tsc and run `dist/index.js`
-- `npm test` — Vitest (no network, no DB; in-memory audit fake)
+- `npm test` — Vitest in every workspace (no network, no DB; fakes for Prometheus/Alertmanager/stores)
+- `npm run test:integration` — live-stack test (needs `npm run stack:up` + `infra/.env`); not in `npm test`
+- `npm run stack:up` / `stack:down` / `stack:logs` — docker compose stack in `infra/`: demo-target
+  (host port 18080), Prometheus (9090), Alertmanager (9093), all on 127.0.0.1. Needs Docker + `infra/.env`
+- `npm run stack:check` — validate Prometheus rules (promtool) and Alertmanager config (amtool)
+- `npm run stack:status` — container health + readiness probes on 18080/9090/9093 (exit 1 if
+  down); `test:integration` runs the same probes first and stops with one line if the stack is down
+- `npm run chaos:provider_outage` | `chaos:latency_spike` | `chaos:auth_bruteforce` |
+  `chaos:webhook_spoofing` — inject failures into demo-target; `chaos:failover` (route to stripe),
+  `chaos:state`, `chaos:reset`
 - `npm run typecheck` / `npm run lint` / `npm run format` — tsc, ESLint, Prettier
 - `npm run token:new -- <actor> <viewer|responder>` — print a new token + its `NIGHTSHIFT_TOKENS` entry
 - `npm run db:migrate -w @nightshift/server` — `prisma migrate deploy` (apply migrations; use for Neon)
@@ -99,30 +108,40 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
   tap (observes; audits refusals + unknown tools) → SDK Host guard (403) → exact-origin guard
   (403) → failed-auth limiter (429) → SDK `requireBearerAuth` (401) → session lookup (404) → SDK
   transport. We do NOT use `createMcpExpressApp` (its guards can't be ordered; FL-09).
+- Service catalog: `apps/server/config/nightshift.yaml` (path `NIGHTSHIFT_CONFIG`), validated by
+  `src/serviceConfig.ts` at startup: Prometheus/Alertmanager URLs (env `PROMETHEUS_URL` /
+  `ALERTMANAGER_URL` override), services with aliases + PromQL per signal + thresholds, and the
+  `scanAssets` allowlist. New apps plug in here only; no app-specific code.
+- Alert label/annotation text is untrusted: `toAlertView` sanitizes identifiers (safe to speak) and
+  wraps annotations as `{ untrusted: true, text }` (data only, never spoken). `rawLabels` is used
+  only as exact-match silence matchers.
 - Tools are registered with `passThroughSchema(zod)`: `tools/list` shows the real schema, but
   the SDK doesn't validate; `runTool` does (so `invalid_input` is audited; FL-08). Never pass a
   raw zod schema to `registerTool`.
 
 ## The 13 tools
 
-| Tool                    | Kind                                      | Role needed |
-| ----------------------- | ----------------------------------------- | ----------- |
-| `get_ops_brief`         | read                                      | viewer      |
-| `list_active_alerts`    | read                                      | viewer      |
-| `explain_incident`      | read (core)                               | viewer      |
-| `get_service_health`    | read                                      | viewer      |
-| `get_recent_deploys`    | read                                      | viewer      |
-| `acknowledge_alert`     | write (low)                               | responder   |
-| `silence_alert`         | write (max 4h)                            | responder   |
-| `prepare_action`        | no side effect, returns `confirmation_id` | responder   |
-| `confirm_action`        | write (executes)                          | responder   |
-| `run_security_scan`     | read external, writes findings            | viewer      |
-| `get_security_findings` | read                                      | viewer      |
-| `get_incident_timeline` | read                                      | viewer      |
-| `add_incident_note`     | write (low)                               | responder   |
+| Tool                    | Kind                                      | Role needed | Status   |
+| ----------------------- | ----------------------------------------- | ----------- | -------- |
+| `get_ops_brief`         | read                                      | viewer      |          |
+| `list_active_alerts`    | read                                      | viewer      | ✅ Day 2 |
+| `explain_incident`      | read (core)                               | viewer      |          |
+| `get_service_health`    | read                                      | viewer      | ✅ Day 2 |
+| `get_recent_deploys`    | read                                      | viewer      |          |
+| `acknowledge_alert`     | write (low)                               | responder   | ✅ Day 2 |
+| `silence_alert`         | write (max 4h)                            | responder   | ✅ Day 2 |
+| `prepare_action`        | no side effect, returns `confirmation_id` | responder   |          |
+| `confirm_action`        | write (executes)                          | responder   |          |
+| `run_security_scan`     | read external, writes findings            | viewer      |          |
+| `get_security_findings` | read                                      | viewer      |          |
+| `get_incident_timeline` | read                                      | viewer      |          |
+| `add_incident_note`     | write (low)                               | responder   |          |
 
-Plus one diagnostic tool (not counted in the 13): `ping_nightshift` — read, viewer — reports server
-version and the caller's role. **Implemented:** `ping_nightshift` only.
+Plus one diagnostic tool (not counted in the 13): `ping_nightshift` (read, viewer; ✅ Day 1)
+reports server version and the caller's role.
+
+Ack is Nightshift-side state (`AlertAck`, one per fingerprint + startsAt; Alertmanager has no ack).
+Silences are idempotent per alert + duration within 10 minutes, and recorded in `AlertSilence`.
 
 Use the `add-mcp-tool` skill whenever creating or changing a tool. Every tool is a `ToolDefinition`
 in `src/tools/<name>.ts`, listed in `TOOLS` (`src/mcp/registerTools.ts`), and runs through

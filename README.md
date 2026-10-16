@@ -4,12 +4,15 @@ Nightshift is a voice on-call and security copilot for small engineering teams: 
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
 take safe, explicitly confirmed actions.
 
-> Status: **Day 1 foundation.** Transport, auth, roles, database, audit log and one diagnostic
-> tool (`ping_nightshift`) are working. Ops, incident and security tools land next.
+> Status: **Day 2.** Transport, auth, roles, database and audit log, plus five tools:
+> `ping_nightshift`, `list_active_alerts`, `get_service_health`, `acknowledge_alert` and
+> `silence_alert`, running against a local Prometheus + Alertmanager stack. Incident diagnosis,
+> two-phase remediation and security posture land next.
 
 ## Prerequisites
 
-- Node.js **20.12+** (developed on 24.x) and npm 10+
+- Node.js **20.12+** for the server (developed on 24.x; the demo target needs 22.18+) and npm 10+
+- Docker (Docker Desktop on Windows/macOS) for the local Prometheus + Alertmanager stack
 - A PostgreSQL database, e.g. a free [Neon](https://neon.tech) project. For local development you
   can also run Prisma's built-in local Postgres: `npx prisma dev` (see below).
 
@@ -48,10 +51,51 @@ npm run build && npm start
 - `GET /healthz` returns `ok` (no auth; for hosting health checks).
 - `POST | GET | DELETE /mcp` is the MCP Streamable HTTP endpoint (bearer token required).
 
+## Local observability stack (demo)
+
+A small simulated payments service (`apps/demo-target`) exposes Prometheus metrics; Prometheus
+scrapes it and evaluates alert rules; Alertmanager holds the alerts Nightshift reads.
+
+```bash
+cp infra/.env.example infra/.env   # set DEMO_ADMIN_TOKEN (any random string, 16+ chars)
+npm run stack:up                   # builds demo-target, starts all three, waits until healthy
+npm run stack:check                # optional: promtool / amtool validation of the configs
+```
+
+| Service      | URL (localhost only)      |
+| ------------ | ------------------------- |
+| demo-target  | http://127.0.0.1:18080    |
+| Prometheus   | http://127.0.0.1:9090     |
+| Alertmanager | http://127.0.0.1:9093     |
+
+demo-target uses host port **18080** because 8080 is often taken by a local web server; change
+`DEMO_TARGET_PORT` / `DEMO_TARGET_URL` in `infra/.env` if needed.
+
+**Chaos scenarios** (each takes 15–45 s to turn into a firing alert):
+
+| Command                          | What breaks                                         | Alerts that fire                      |
+| -------------------------------- | --------------------------------------------------- | ------------------------------------- |
+| `npm run chaos:provider_outage`  | Razorpay is down: its breaker opens, charges fail   | `CircuitBreakerOpen`, `HighErrorRate` |
+| `npm run chaos:latency_spike`    | 80% of payments requests take 1.2–3 s               | `HighLatencyP95`                      |
+| `npm run chaos:auth_bruteforce`  | ~20 failed logins per second                        | `AuthFailureSpike`                    |
+| `npm run chaos:webhook_spoofing` | ~4 forged webhooks per second fail HMAC             | `WebhookSignatureFailures`            |
+| `npm run chaos:failover`         | Route payments to Stripe (what failover will do)    | `HighErrorRate` clears                |
+| `npm run chaos:reset`            | Back to healthy (scenarios off, Razorpay active)    | everything resolves                   |
+
+`npm run chaos:state` shows what is active. `npm run stack:down` stops the stack.
+
+### Plugging in your own app
+
+Nightshift has no app-specific code. Edit `apps/server/config/nightshift.yaml`: point
+`prometheus.url` / `alertmanager.url` at your stack (or set `PROMETHEUS_URL` / `ALERTMANAGER_URL`),
+and list your services with aliases, one PromQL per signal (error rate, p95 latency, throughput,
+optional circuit breakers) and thresholds. Alerts must carry `service` and `severity` labels.
+
 ## Test
 
 ```bash
-npm test          # Vitest; no external network, no database needed
+npm test                  # unit tests, all workspaces; no network, no database needed
+npm run test:integration  # against the live stack (npm run stack:up first)
 npm run typecheck
 npm run lint
 ```
@@ -121,12 +165,15 @@ apps/server/          Nightshift MCP server (this is the submission's new work)
   src/http/           Express app, origin guard, session store
   src/mcp/            McpServer factory + tool registration
   src/tools/          one file per tool + the shared runTool adapter
-  src/domain/         pure business logic
-  src/lib/            auth, roles, audit, rate limiting, logging
-  src/db/             Prisma client + audit sink
+  src/domain/         pure business logic (alerts, health, service resolution, spoken text)
+  src/clients/        Prometheus + Alertmanager HTTP clients (typed errors)
+  src/lib/            auth, roles, audit, rate limiting, untrusted-text handling, logging
+  src/db/             Prisma client, audit sink, ack/silence stores
+  config/             nightshift.yaml service catalog
   prisma/             schema, migrations, seed
+apps/demo-target/     simulated payments API with Prometheus metrics and chaos switches
+infra/                docker compose: demo-target, Prometheus, Alertmanager + alert rules
 apps/alexa-sim/       (coming) simulated Alexa+ client
-apps/demo-target/     (coming) TruePay-like demo service
 packages/mcp-prometheus-tools/  (coming) reusable OSS package
 docs/                 friction log, product feedback
 ```
