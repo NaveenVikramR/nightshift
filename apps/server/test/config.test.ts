@@ -35,6 +35,16 @@ describe('loadConfig', () => {
     expect(c.tokens).toEqual([{ actor: 'a', role: 'viewer', sha256: hash }]);
   });
 
+  it('parses ingest tokens and GITHUB_TOKEN', () => {
+    const c = loadConfig({
+      NIGHTSHIFT_INGEST_TOKENS: JSON.stringify([{ source: 'github-actions', sha256: hash }]),
+      GITHUB_TOKEN: 'ghp_x',
+    });
+    expect(c.ingestTokens).toEqual([{ source: 'github-actions', sha256: hash }]);
+    expect(c.githubToken).toBe('ghp_x');
+    expect(loadConfig({}).ingestTokens).toEqual([]);
+  });
+
   it.each([
     ['bad JSON', { NIGHTSHIFT_TOKENS: '[{' }],
     [
@@ -53,6 +63,19 @@ describe('loadConfig', () => {
           { actor: 'a', role: 'responder', sha256: 'b'.repeat(64) },
         ]),
       },
+    ],
+    [
+      'duplicate ingest source',
+      {
+        NIGHTSHIFT_INGEST_TOKENS: JSON.stringify([
+          { source: 'ci', sha256: hash },
+          { source: 'ci', sha256: 'b'.repeat(64) },
+        ]),
+      },
+    ],
+    [
+      'bad ingest source',
+      { NIGHTSHIFT_INGEST_TOKENS: JSON.stringify([{ source: 'a b', sha256: hash }]) },
     ],
     ['bad origin', { ALLOWED_ORIGINS: 'not a url' }],
     ['port out of range', { PORT: '70000' }],

@@ -1,13 +1,22 @@
 import { UserFacingError } from '../lib/errors.js';
 
-export type Upstream = 'Prometheus' | 'Alertmanager';
+export type Upstream = 'Prometheus' | 'Alertmanager' | 'GitHub' | 'Database';
 export type ClientErrorKind = 'unreachable' | 'timeout' | 'bad_response' | 'rejected';
 
+/** How each upstream is named out loud (sentence-initial form). */
+const SPOKEN: Record<Upstream, string> = {
+  Prometheus: 'Prometheus',
+  Alertmanager: 'Alertmanager',
+  GitHub: 'GitHub',
+  Database: 'The Nightshift database',
+};
+const spokenMid = (u: Upstream) => (u === 'Database' ? 'the Nightshift database' : SPOKEN[u]);
+
 const SPEAK: Record<ClientErrorKind, (u: Upstream) => string> = {
-  unreachable: (u) => `I couldn't reach ${u}. Try again in a minute.`,
-  timeout: (u) => `${u} is taking too long to answer. Try again in a minute.`,
-  bad_response: (u) => `${u} sent an answer I couldn't read. Check its configuration.`,
-  rejected: (u) => `${u} rejected my request. Check the Nightshift service config.`,
+  unreachable: (u) => `I couldn't reach ${spokenMid(u)}. Try again in a minute.`,
+  timeout: (u) => `${SPOKEN[u]} is taking too long to answer. Try again in a minute.`,
+  bad_response: (u) => `${SPOKEN[u]} sent an answer I couldn't read. Check its configuration.`,
+  rejected: (u) => `${SPOKEN[u]} rejected my request. Check the Nightshift service config.`,
 };
 
 /** Typed upstream failure; `speak` is user-safe, `message` (internal detail) is for logs only. */

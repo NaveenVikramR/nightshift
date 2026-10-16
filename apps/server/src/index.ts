@@ -1,7 +1,9 @@
 import { HttpAlertmanagerClient } from './clients/alertmanager.js';
+import { DeploySourceRouter, GitHubDeploySource, IngestDeploySource } from './clients/deploys.js';
 import { HttpPrometheusClient } from './clients/prometheus.js';
 import { ConfigError, loadConfig } from './config.js';
 import { PrismaAckStore, PrismaSilenceStore } from './db/alertStores.js';
+import { PrismaDeployStore } from './db/deployStore.js';
 import { createPrismaClient } from './db/prisma.js';
 import { PrismaAuditLog } from './db/prismaAuditLog.js';
 import { createApp } from './http/createApp.js';
@@ -34,8 +36,16 @@ async function main(): Promise<void> {
   }
 
   const catalog = loadServiceConfig();
+  const githubServices = catalog.services.filter((s) => s.deploys?.source === 'github');
+  if (githubServices.length > 0 && !config.githubToken) {
+    log.warn('GITHUB_TOKEN is not set: deploy history for these services is unavailable', {
+      services: githubServices.map((s) => s.name),
+    });
+  }
+  const deployStore = new PrismaDeployStore(db);
   const nightshift = createApp({
     config,
+    deployStore,
     deps: {
       audit: new PrismaAuditLog(db),
       prometheus: new HttpPrometheusClient(catalog.prometheus.url, catalog.prometheus.timeoutMs),
@@ -46,12 +56,23 @@ async function main(): Promise<void> {
       services: catalog.services,
       acks: new PrismaAckStore(db),
       silences: new PrismaSilenceStore(db),
+      deploys: new DeploySourceRouter({
+        ingest: new IngestDeploySource(deployStore),
+        github: new GitHubDeploySource(
+          catalog.github.apiUrl,
+          config.githubToken,
+          catalog.github.timeoutMs,
+        ),
+      }),
+      timeZone: catalog.display.timeZone,
     },
   });
   log.info('service catalog loaded', {
     services: catalog.services.map((s) => s.name),
     prometheus: catalog.prometheus.url,
     alertmanager: catalog.alertmanager.url,
+    timeZone: catalog.display.timeZone,
+    ingestSources: config.ingestTokens.map((t) => t.source),
   });
 
   const server = nightshift.app.listen(config.port, config.host, () => {

@@ -29,16 +29,24 @@ export const tokenEntrySchema = z.object({
 });
 export type TokenEntry = z.infer<typeof tokenEntrySchema>;
 
-const tokens = optional(z.string().default('[]'))
-  .transform((s, ctx) => {
-    try {
-      return JSON.parse(s) as unknown;
-    } catch {
-      ctx.addIssue({ code: 'custom', message: 'must be a JSON array' });
-      return z.NEVER;
-    }
-  })
-  .pipe(z.array(tokenEntrySchema));
+/** CI systems that may POST /events/deploy. Never valid on /mcp. */
+export const ingestTokenEntrySchema = z.object({
+  source: z.string().regex(/^[\w.@-]{1,64}$/, 'letters, digits, _ . @ -'),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/, 'must be 64 lowercase hex chars'),
+});
+export type IngestTokenEntry = z.infer<typeof ingestTokenEntrySchema>;
+
+const jsonArray = <T extends z.ZodType>(item: T) =>
+  optional(z.string().default('[]'))
+    .transform((s, ctx) => {
+      try {
+        return JSON.parse(s) as unknown;
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'must be a JSON array' });
+        return z.NEVER;
+      }
+    })
+    .pipe(z.array(item));
 
 const boolean = optional(z.enum(['true', 'false']).default('false')).transform((v) => v === 'true');
 
@@ -64,7 +72,9 @@ const envSchema = z.object({
       .max(24 * 60)
       .default(30),
   ),
-  NIGHTSHIFT_TOKENS: tokens,
+  NIGHTSHIFT_TOKENS: jsonArray(tokenEntrySchema),
+  NIGHTSHIFT_INGEST_TOKENS: jsonArray(ingestTokenEntrySchema),
+  GITHUB_TOKEN: optional(z.string().min(1).optional()),
   AUTH_FAIL_LIMIT: optional(z.coerce.number().int().min(1).max(10_000).default(20)),
   AUTH_FAIL_WINDOW_MINUTES: optional(
     z.coerce
@@ -88,6 +98,10 @@ export interface Config {
   maxBodyBytes: number;
   sessionIdleTtlMs: number;
   tokens: TokenEntry[];
+  /** Deploy-ingest tokens (POST /events/deploy only). */
+  ingestTokens: IngestTokenEntry[];
+  /** For services whose deploys come from GitHub. Secret: never log. */
+  githubToken: string | undefined;
   authFailLimit: number;
   authFailWindowMs: number;
   databaseUrl: string | undefined;
@@ -107,6 +121,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (new Set(actors).size !== actors.length) {
     throw new ConfigError('Invalid configuration:\n  NIGHTSHIFT_TOKENS: duplicate actor');
   }
+  const sources = e.NIGHTSHIFT_INGEST_TOKENS.map((t) => t.source);
+  if (new Set(sources).size !== sources.length) {
+    throw new ConfigError('Invalid configuration:\n  NIGHTSHIFT_INGEST_TOKENS: duplicate source');
+  }
   return {
     host: e.HOST,
     port: e.PORT,
@@ -116,6 +134,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxBodyBytes: e.MCP_MAX_BODY_BYTES,
     sessionIdleTtlMs: e.SESSION_IDLE_TTL_MINUTES * 60_000,
     tokens: e.NIGHTSHIFT_TOKENS,
+    ingestTokens: e.NIGHTSHIFT_INGEST_TOKENS,
+    githubToken: e.GITHUB_TOKEN,
     authFailLimit: e.AUTH_FAIL_LIMIT,
     authFailWindowMs: e.AUTH_FAIL_WINDOW_MINUTES * 60_000,
     databaseUrl: e.DATABASE_URL,

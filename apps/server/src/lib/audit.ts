@@ -13,11 +13,14 @@ export type AuditOutcome =
   | 'forbidden_request'
   | 'rate_limited'
   | 'session_not_found'
-  | 'bad_request';
+  | 'bad_request'
+  // deploy ingest (POST /events/deploy)
+  | 'unknown_service';
 
 export interface AuditEntry {
   actor: string;
-  role: Role | 'unknown';
+  /** 'ingest' = a CI deploy-ingest token (never valid on /mcp). */
+  role: Role | 'ingest' | 'unknown';
   tool: string;
   inputHash: string;
   outcome: AuditOutcome;

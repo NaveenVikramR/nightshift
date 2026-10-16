@@ -60,6 +60,44 @@ describe('service config', () => {
     expect(() => parseServiceConfig(raw, {})).toThrow(ConfigError);
   });
 
+  it('parses deploy sources, security thresholds and the display time zone', () => {
+    const c = parseServiceConfig(
+      {
+        ...minimal,
+        display: { timeZone: 'Asia/Kolkata' },
+        services: [
+          { ...minimal.services[0], deploys: { source: 'github', repo: 'acme/payments' } },
+        ],
+      },
+      {},
+    );
+    expect(c.display.timeZone).toBe('Asia/Kolkata');
+    expect(c.services[0]?.deploys).toEqual({
+      source: 'github',
+      repo: 'acme/payments',
+      environment: 'production',
+    });
+    expect(c.services[0]?.thresholds).toMatchObject({
+      authFailuresPerSecond: 2,
+      webhookFailuresPerSecond: 0.5,
+    });
+    expect(parseServiceConfig(minimal, {}).display.timeZone).toBe('UTC');
+  });
+
+  it.each([
+    ['unknown time zone', { ...minimal, display: { timeZone: 'Mars/Olympus' } }],
+    [
+      'github source without repo',
+      { ...minimal, services: [{ ...minimal.services[0], deploys: { source: 'github' } }] },
+    ],
+    [
+      'unknown deploy source',
+      { ...minimal, services: [{ ...minimal.services[0], deploys: { source: 'jenkins' } }] },
+    ],
+  ])('rejects %s', (_label, raw) => {
+    expect(() => parseServiceConfig(raw, {})).toThrow(ConfigError);
+  });
+
   it('reports a missing file clearly', () => {
     expect(() => loadServiceConfig('config/does-not-exist.yaml', {})).toThrow(/Can't read/);
   });

@@ -71,6 +71,28 @@ model AlertSilence {
   @@map("alert_silence")
 }
 
+/// A deploy reported by a CI system (POST /events/deploy). GitHub deployments
+/// are read live and not stored. Text fields are sanitized before insert; the
+/// commit message is untrusted data (invariant 6) and is never interpreted.
+model DeployEvent {
+  id            String   @id @default(uuid())
+  source        String // ingest token name, e.g. "github-actions"
+  externalId    String // caller's id (idempotency key); generated when absent
+  service       String
+  environment   String
+  version       String
+  commitSha     String?
+  commitMessage String?
+  author        String?
+  status        String   @default("success") // success | failure | in_progress
+  deployedAt    DateTime
+  createdAt     DateTime @default(now())
+
+  @@unique([source, externalId])
+  @@index([service, deployedAt])
+  @@map("deploy_event")
+}
+
 model Incident {
   id         String          @id @default(uuid())
   title      String

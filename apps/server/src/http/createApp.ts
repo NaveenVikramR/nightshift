@@ -14,6 +14,7 @@ import {
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { isInitializeRequest, type AuthInfo } from '@modelcontextprotocol/server';
 import type { Config } from '../config.js';
+import type { DeployStore } from '../db/deployStore.js';
 import { createMcpServer } from '../mcp/createMcpServer.js';
 import { TOOLS } from '../mcp/registerTools.js';
 import { createTokenVerifier, getPrincipal } from '../lib/auth.js';
@@ -21,6 +22,7 @@ import type { ToolDefinition, ToolDeps } from '../tools/types.js';
 import { SERVER_VERSION } from '../version.js';
 import { AuthFailureLimiter, authFailureGuard } from '../lib/authFailureLimiter.js';
 import { log } from '../lib/log.js';
+import { deployIngestHandler } from './deployIngest.js';
 import { jsonRpcError } from './jsonRpcError.js';
 import { originGuard } from './originGuard.js';
 import { SessionStore } from './sessionStore.js';
@@ -32,6 +34,8 @@ export type ExternalToolDeps = Omit<ToolDeps, 'now' | 'serverVersion' | 'started
 export interface AppDeps {
   config: Config;
   deps: ExternalToolDeps;
+  /** Where POST /events/deploy stores deploys. */
+  deployStore: DeployStore;
   /** Defaults to every registered tool; tests may inject extra tools. */
   tools?: readonly ToolDefinition[];
   now?: () => number;
@@ -55,7 +59,13 @@ export interface NightshiftApp {
   close(): Promise<void>;
 }
 
-export function createApp({ config, deps, tools = TOOLS, now = Date.now }: AppDeps): NightshiftApp {
+export function createApp({
+  config,
+  deps,
+  deployStore,
+  tools = TOOLS,
+  now = Date.now,
+}: AppDeps): NightshiftApp {
   const toolDeps: ToolDeps = {
     ...deps,
     now: () => new Date(now()),
@@ -142,6 +152,22 @@ export function createApp({ config, deps, tools = TOOLS, now = Date.now }: AppDe
       .set('Allow', 'GET, POST, DELETE')
       .json(jsonRpcError(-32000, 'Method not allowed'));
   });
+
+  // Deploy ingest for CI systems: same Host / Origin / failed-auth guards as
+  // /mcp, but only ingest tokens are accepted (never MCP tokens).
+  if (host) app.use('/events', host);
+  app.use('/events', originGuard(config.allowedOrigins));
+  app.use('/events', authFailureGuard(authFailures));
+  app.post(
+    '/events/deploy',
+    deployIngestHandler({
+      tokens: config.ingestTokens,
+      store: deployStore,
+      services: deps.services,
+      audit: deps.audit,
+      now: () => new Date(now()),
+    }),
+  );
 
   app.use(errorHandler);
 

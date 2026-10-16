@@ -15,6 +15,7 @@ import { getServiceHealth } from '../../src/tools/get_service_health.js';
 import { listActiveAlerts } from '../../src/tools/list_active_alerts.js';
 import type { ToolDefinition, ToolDeps } from '../../src/tools/types.js';
 import { InMemoryAuditLog } from '../fakes/inMemoryAuditLog.js';
+import { FakeDeploys } from '../fakes/fakeDeploys.js';
 import { InMemoryAckStore, InMemorySilenceStore } from '../fakes/memoryStores.js';
 import { BOB, invoke } from '../fakes/toolDeps.js';
 
@@ -34,6 +35,8 @@ const deps: ToolDeps = {
   services: catalog.services,
   acks: new InMemoryAckStore(),
   silences: new InMemorySilenceStore(),
+  deploys: new FakeDeploys(),
+  timeZone: catalog.display.timeZone,
   now: () => new Date(),
   serverVersion: 'integration',
   startedAt: new Date(),

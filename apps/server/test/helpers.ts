@@ -10,6 +10,7 @@ import { fakeToolDeps } from './fakes/toolDeps.js';
 // Test-only tokens; never valid anywhere else.
 export const RESPONDER_TOKEN = 'test-responder-token';
 export const VIEWER_TOKEN = 'test-viewer-token';
+export const INGEST_TOKEN = 'test-ingest-token';
 export const ALLOWED_ORIGIN = 'http://localhost:6274';
 export const PROTOCOL = '2025-11-25';
 
@@ -26,6 +27,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
       { actor: 'alice', role: 'responder', sha256: sha256Hex(RESPONDER_TOKEN) },
       { actor: 'bob', role: 'viewer', sha256: sha256Hex(VIEWER_TOKEN) },
     ],
+    ingestTokens: [{ source: 'test-ci', sha256: sha256Hex(INGEST_TOKEN) }],
+    githubToken: undefined,
     authFailLimit: 20,
     authFailWindowMs: 10 * 60_000,
     databaseUrl: undefined,
@@ -51,6 +54,7 @@ export function makeHarness(
   const ns = createApp({
     config: testConfig(overrides),
     deps: external,
+    deployStore: fakes.deployStore,
     ...(opts.tools && { tools: opts.tools }),
     now: () => clock.now,
   });

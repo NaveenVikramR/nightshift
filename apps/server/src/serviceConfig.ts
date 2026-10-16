@@ -14,6 +14,26 @@ const endpoint = z.object({
   timeoutMs: z.number().int().min(100).max(60_000).default(5000),
 });
 
+const DEFAULT_THRESHOLDS = {
+  errorRate: 0.05,
+  latencyP95Seconds: 1,
+  authFailuresPerSecond: 2,
+  webhookFailuresPerSecond: 0.5,
+};
+
+/** Where a service's deploy history comes from. Omitted = no deploy source. */
+const deploySourceSchema = z.discriminatedUnion('source', [
+  z.object({
+    source: z.literal('ingest'),
+    environment: z.string().min(1).max(40).default('production'),
+  }),
+  z.object({
+    source: z.literal('github'),
+    environment: z.string().min(1).max(40).default('production'),
+    repo: z.string().regex(/^[\w.-]{1,100}\/[\w.-]{1,100}$/, 'must be owner/name'),
+  }),
+]);
+
 const serviceSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/, 'lowercase letters, digits, - and _'),
   displayName: z.string().min(1).max(40),
@@ -23,15 +43,37 @@ const serviceSchema = z.object({
     latencyP95: z.string().min(1),
     throughput: z.string().min(1),
     breakers: z.string().min(1).optional(),
+    /** Failed logins per second (security signal). */
+    authFailures: z.string().min(1).optional(),
+    /** Webhooks rejected for a bad signature, per second (security signal). */
+    webhookFailures: z.string().min(1).optional(),
   }),
   breakerLabel: z.string().min(1).default('provider'),
   thresholds: z
     .object({
-      errorRate: z.number().min(0).max(1).default(0.05),
-      latencyP95Seconds: z.number().positive().default(1),
+      errorRate: z.number().min(0).max(1).default(DEFAULT_THRESHOLDS.errorRate),
+      latencyP95Seconds: z.number().positive().default(DEFAULT_THRESHOLDS.latencyP95Seconds),
+      authFailuresPerSecond: z
+        .number()
+        .positive()
+        .default(DEFAULT_THRESHOLDS.authFailuresPerSecond),
+      webhookFailuresPerSecond: z
+        .number()
+        .positive()
+        .default(DEFAULT_THRESHOLDS.webhookFailuresPerSecond),
     })
-    .default({ errorRate: 0.05, latencyP95Seconds: 1 }),
+    .default(DEFAULT_THRESHOLDS),
+  deploys: deploySourceSchema.optional(),
 });
+
+const timeZone = z.string().refine((tz) => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}, 'unknown IANA time zone');
 
 const scanAssetSchema = z.object({
   name: z.string().min(1).max(64),
@@ -44,6 +86,14 @@ const serviceConfigSchema = z
     alertmanager: endpoint,
     services: z.array(serviceSchema).min(1),
     scanAssets: z.array(scanAssetSchema).default([]),
+    /** How times are spoken ("the 2:41 deploy"). */
+    display: z.object({ timeZone: timeZone.default('UTC') }).default({ timeZone: 'UTC' }),
+    github: z
+      .object({
+        apiUrl: httpUrl.default('https://api.github.com'),
+        timeoutMs: z.number().int().min(100).max(60_000).default(8000),
+      })
+      .default({ apiUrl: 'https://api.github.com', timeoutMs: 8000 }),
   })
   .superRefine((c, ctx) => {
     const seen = new Set<string>();
@@ -57,6 +107,7 @@ const serviceConfigSchema = z
 
 export type ServiceConfig = z.infer<typeof serviceConfigSchema>;
 export type ServiceDef = ServiceConfig['services'][number];
+export type DeploySourceConfig = NonNullable<ServiceDef['deploys']>;
 
 /** Validate a parsed config object, applying env URL overrides. */
 export function parseServiceConfig(

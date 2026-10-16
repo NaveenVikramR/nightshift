@@ -1,6 +1,7 @@
 import type { ToolAnnotations } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
 import type { AlertmanagerClient } from '../clients/alertmanager.js';
+import type { DeployEventsClient } from '../clients/deploys.js';
 import type { PrometheusClient } from '../clients/prometheus.js';
 import type { AckStore, SilenceStore } from '../db/alertStores.js';
 import type { AuditLog } from '../lib/audit.js';
@@ -16,6 +17,9 @@ export interface ToolDeps {
   services: readonly ServiceDef[];
   acks: AckStore;
   silences: SilenceStore;
+  deploys: DeployEventsClient;
+  /** IANA zone for spoken clock times ("the 2:41 deploy"). */
+  timeZone: string;
   now: () => Date;
   serverVersion: string;
   startedAt: Date;

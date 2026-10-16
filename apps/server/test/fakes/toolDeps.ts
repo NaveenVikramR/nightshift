@@ -3,6 +3,7 @@ import { parseServiceConfig, type ServiceDef } from '../../src/serviceConfig.js'
 import { runTool } from '../../src/tools/runTool.js';
 import type { ToolDefinition, ToolDeps } from '../../src/tools/types.js';
 import { FakeAlertmanager } from './fakeAlertmanager.js';
+import { FakeDeploys, InMemoryDeployStore } from './fakeDeploys.js';
 import { FakePrometheus } from './fakePrometheus.js';
 import { InMemoryAuditLog } from './inMemoryAuditLog.js';
 import { InMemoryAckStore, InMemorySilenceStore } from './memoryStores.js';
@@ -49,6 +50,8 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
   const alertmanager = new FakeAlertmanager();
   const acks = new InMemoryAckStore(now);
   const silences = new InMemorySilenceStore(now);
+  const deploys = new FakeDeploys();
+  const deployStore = new InMemoryDeployStore(now);
   const deps: ToolDeps = {
     audit,
     prometheus,
@@ -56,11 +59,13 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
     services,
     acks,
     silences,
+    deploys,
+    timeZone: 'UTC',
     now,
     serverVersion: '0.1.0',
     startedAt: new Date('2026-10-16T11:00:00Z'),
   };
-  return { deps, clock, audit, prometheus, alertmanager, acks, silences };
+  return { deps, clock, audit, prometheus, alertmanager, acks, silences, deploys, deployStore };
 }
 
 export function authFor(actor: string, role: 'viewer' | 'responder'): AuthInfo {
