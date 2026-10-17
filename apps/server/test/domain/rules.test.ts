@@ -178,6 +178,23 @@ describe('diagnose (rules over evidence)', () => {
     expect(note.values).toMatchObject({ version: 'v1.4.3', minutesAfterOnset: 2 });
   });
 
+  it('only the version running at the onset is a suspect: a rolled-back deploy is superseded', async () => {
+    // errors start 11:56:30; v1.4.2 went out at 11:55, rolled back to v1.4.1 at 11:55:30
+    const d = await run('provider_outage', {
+      tweak: (f) =>
+        f.deploys
+          .add({ service: 'payments-api', version: 'v1.4.2', deployedAt: minutesAgo(5) })
+          .add({ service: 'payments-api', version: 'v1.4.1', deployedAt: minutesAgo(4.5) }),
+    });
+    const deploy = d.causes.find((c) => c.id === 'recent_deploy');
+    expect(deploy?.suggestedActions[0]?.params['fromVersion']).toBe('v1.4.1');
+    expect(d.relations.map((r) => r.version)).not.toContain('v1.4.2');
+    const note = d.causes[0]!.evidence.find((e) => e.values['replacedBy'] === 'v1.4.1')!;
+    expect(note.text).toBe(
+      'Deploy v1.4.2 at 2026-10-16T11:55:00.000Z was replaced by v1.4.1 at 2026-10-16T11:55:30.000Z before errors started, so it is not the cause.',
+    );
+  });
+
   it('a deploy after the onset is never blamed in speak or suggested for rollback', async () => {
     const d = await run('latency_spike', {
       tweak: (f) =>

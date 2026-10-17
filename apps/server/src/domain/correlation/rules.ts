@@ -257,14 +257,13 @@ export function recentDeployRule(e: Evidence, f: Facts): Cause | undefined {
   if (!a) return undefined;
   const { signal: anchorSignal, time: anchor } = a;
 
-  let best: { deploy: Evidence['deploys'][number]; confidence: number } | undefined;
-  for (const d of e.deploys) {
-    const delta = anchor.getTime() - d.deployedAt.getTime();
-    if (delta < 0 || delta > DEPLOY_WINDOW_MS) continue;
-    const confidence = round(0.9 - 0.4 * (delta / DEPLOY_WINDOW_MS), 2);
-    if (!best || confidence > best.confidence) best = { deploy: d, confidence };
-  }
-  if (!best) return undefined;
+  // Only the version RUNNING at the onset can have caused it: the latest deploy at
+  // or before it. Earlier deploys were superseded (see supersededDeploys).
+  const running = runningAt(e, anchor);
+  if (!running) return undefined;
+  const delta = anchor.getTime() - running.deployedAt.getTime();
+  if (delta > DEPLOY_WINDOW_MS) return undefined;
+  const best = { deploy: running, confidence: round(0.9 - 0.4 * (delta / DEPLOY_WINDOW_MS), 2) };
   const d = best.deploy;
   return {
     id: 'recent_deploy',
@@ -280,6 +279,41 @@ export function recentDeployRule(e: Evidence, f: Facts): Cause | undefined {
       },
     ],
   };
+}
+
+/** The latest deploy at or before `t` (the version running then). Deploys are newest first. */
+function runningAt(e: Evidence, t: Date): Evidence['deploys'][number] | undefined {
+  return e.deploys.find((d) => d.deployedAt.getTime() <= t.getTime());
+}
+
+/**
+ * Deploys in the window before the onset that a later deploy replaced before
+ * it (e.g. a bad version already rolled back): not running, so not the cause.
+ */
+export function supersededDeploys(e: Evidence, f: Facts): EvidenceItem[] {
+  const a = anchorOf(f);
+  if (!a) return [];
+  const running = runningAt(e, a.time);
+  if (!running) return [];
+  return e.deploys
+    .filter(
+      (d) =>
+        d !== running &&
+        d.deployedAt.getTime() < running.deployedAt.getTime() &&
+        a.time.getTime() - d.deployedAt.getTime() <= DEPLOY_WINDOW_MS,
+    )
+    .map((d) => ({
+      kind: 'deploy' as const,
+      at: iso(d.deployedAt),
+      text: `Deploy ${d.version} at ${iso(d.deployedAt)} was replaced by ${running.version} at ${iso(running.deployedAt)} before errors started, so it is not the cause.`,
+      values: {
+        version: d.version,
+        deployedAt: iso(d.deployedAt),
+        replacedBy: running.version,
+        replacedAt: iso(running.deployedAt),
+        exonerated: true,
+      },
+    }));
 }
 
 /** Deploys that landed AFTER the onset: evidence that they are not the cause. */
@@ -463,14 +497,12 @@ function breakerAfterDeploy(e: Evidence, f: Facts): BreakerRelation[] {
   for (const b of f.breakers) {
     if (b.change.kind !== 'entered') continue;
     const opened = b.change.at;
-    const deploy = e.deploys
-      .filter((d) => {
-        const after = opened.getTime() - d.deployedAt.getTime();
-        const errorsFirst = onset !== undefined && onset.getTime() < d.deployedAt.getTime();
-        return after >= 0 && after <= DEPLOY_WINDOW_MS && !errorsFirst;
-      })
-      .sort((a, b2) => b2.deployedAt.getTime() - a.deployedAt.getTime())[0];
-    if (deploy) {
+    // The version running when the breaker opened, if it went out within the window.
+    const deploy = runningAt(e, opened);
+    const after = deploy ? opened.getTime() - deploy.deployedAt.getTime() : Infinity;
+    const errorsFirst =
+      !!deploy && onset !== undefined && onset.getTime() < deploy.deployedAt.getTime();
+    if (deploy && after <= DEPLOY_WINDOW_MS && !errorsFirst) {
       relations.push({
         kind: 'breaker_after_deploy',
         dependency: b.dependency,
@@ -508,7 +540,7 @@ export function diagnose(e: Evidence): Diagnosis {
   const wrong = causes.length > 0 || somethingWrong(e, facts);
   if (causes.length === 0 && wrong) causes = [noClearCause(e, facts, alerts)];
   causes.sort((a, b) => b.confidence - a.confidence);
-  const exonerated = exoneratedDeploys(e, facts);
+  const exonerated = [...exoneratedDeploys(e, facts), ...supersededDeploys(e, facts)];
   if (exonerated.length > 0) {
     causes = causes.map((c) => ({ ...c, evidence: [...c.evidence, ...exonerated] }));
   }
