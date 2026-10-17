@@ -123,7 +123,7 @@ describe('explain_incident', () => {
       primaryCause: 'provider_failure',
       status: 'open',
     });
-    expect(f.incidents.events.map((e) => [e.kind, e.actor, e.message])).toEqual([
+    expect(f.incidents.eventLog.map((e) => [e.kind, e.actor, e.message])).toEqual([
       ['diagnosis', 'bob', 'critical: provider_failure (0.9), recent_deploy (0.84)'],
       ['diagnosis', 'bob', 'critical: provider_failure (0.9), recent_deploy (0.84)'],
     ]);

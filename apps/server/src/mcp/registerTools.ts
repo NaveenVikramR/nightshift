@@ -3,10 +3,12 @@ import { acknowledgeAlert } from '../tools/acknowledge_alert.js';
 import { confirmAction } from '../tools/confirm_action.js';
 import { explainIncident } from '../tools/explain_incident.js';
 import { getRecentDeploys } from '../tools/get_recent_deploys.js';
+import { getSecurityFindings } from '../tools/get_security_findings.js';
 import { getServiceHealth } from '../tools/get_service_health.js';
 import { listActiveAlerts } from '../tools/list_active_alerts.js';
 import { pingNightshift } from '../tools/ping_nightshift.js';
 import { prepareAction } from '../tools/prepare_action.js';
+import { runSecurityScan } from '../tools/run_security_scan.js';
 import { runTool } from '../tools/runTool.js';
 import { silenceAlert } from '../tools/silence_alert.js';
 import type { ToolDefinition, ToolDeps } from '../tools/types.js';
@@ -23,6 +25,8 @@ export const TOOLS: readonly ToolDefinition[] = [
   silenceAlert,
   prepareAction,
   confirmAction,
+  runSecurityScan,
+  getSecurityFindings,
 ] as unknown as readonly ToolDefinition[];
 
 export function registerTools(

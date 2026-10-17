@@ -7,6 +7,8 @@ import type { AckStore, SilenceStore } from '../db/alertStores.js';
 import type { DeployStore } from '../db/deployStore.js';
 import type { IncidentStore } from '../db/incidentStore.js';
 import type { PendingActionStore } from '../db/pendingActionStore.js';
+import type { SecurityStore } from '../db/securityStore.js';
+import type { PostureScanner } from '../domain/posture/index.js';
 import type { ExecutorRegistry } from '../domain/actions/executors/registry.js';
 import type { Narrator } from '../domain/correlation/narrator.js';
 import type { AuditLog } from '../lib/audit.js';
@@ -27,6 +29,9 @@ export interface ToolDeps {
   /** Allowlisted executors per service + action (nightshift.yaml). */
   executors: ExecutorRegistry;
   pendingActions: PendingActionStore;
+  security: SecurityStore;
+  /** The allowlisted security checks (nightshift.yaml security). */
+  posture: PostureScanner;
   /** Where Nightshift records deploys it performs itself (rollbacks). */
   deployLog?: DeployStore;
   /** confirm_action requires the preparing MCP session too (STRICT_SESSION_BINDING). */

@@ -6,6 +6,8 @@ import { PrismaAckStore, PrismaSilenceStore } from './db/alertStores.js';
 import { PrismaDeployStore } from './db/deployStore.js';
 import { PrismaIncidentStore } from './db/incidentStore.js';
 import { PrismaPendingActionStore } from './db/pendingActionStore.js';
+import { PrismaSecurityStore } from './db/securityStore.js';
+import { createPostureScanner } from './domain/posture/index.js';
 import { ExecutorRegistry } from './domain/actions/executors/registry.js';
 import { createPrismaClient } from './db/prisma.js';
 import { PrismaAuditLog } from './db/prismaAuditLog.js';
@@ -52,12 +54,13 @@ async function main(): Promise<void> {
     });
   }
   const deployStore = new PrismaDeployStore(db);
+  const prometheus = new HttpPrometheusClient(catalog.prometheus.url, catalog.prometheus.timeoutMs);
   const nightshift = createApp({
     config,
     deployStore,
     deps: {
       audit: new PrismaAuditLog(db),
-      prometheus: new HttpPrometheusClient(catalog.prometheus.url, catalog.prometheus.timeoutMs),
+      prometheus,
       alertmanager: new HttpAlertmanagerClient(
         catalog.alertmanager.url,
         catalog.alertmanager.timeoutMs,
@@ -76,6 +79,15 @@ async function main(): Promise<void> {
       incidents: new PrismaIncidentStore(db),
       executors: ExecutorRegistry.fromConfig(catalog, process.env),
       pendingActions: new PrismaPendingActionStore(db),
+      security: new PrismaSecurityStore(db),
+      posture: createPostureScanner({
+        security: catalog.security,
+        services: catalog.services,
+        prometheus,
+        githubApiUrl: catalog.github.apiUrl,
+        githubToken: config.githubToken,
+        now: () => new Date(),
+      }),
       timeZone: catalog.display.timeZone,
     },
   });

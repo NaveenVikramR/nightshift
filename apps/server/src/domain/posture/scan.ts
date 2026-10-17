@@ -40,15 +40,13 @@ export async function runChecks(
           timeoutMs,
         );
       });
-      const run = c
-        .run()
-        .catch((): CheckResult => ({
-          check: c.name,
-          status: 'error',
-          findings: [],
-          checked: [],
-          note: 'check failed',
-        }));
+      const run = c.run().catch((): CheckResult => ({
+        check: c.name,
+        status: 'error',
+        findings: [],
+        checked: [],
+        note: 'check failed',
+      }));
       return Promise.race([run, timeout]).finally(() => clearTimeout(timer));
     }),
   );

@@ -26,7 +26,9 @@ import { ExecutorRegistry } from '../../src/domain/actions/executors/registry.js
 import type { ActionExecutor } from '../../src/domain/actions/executors/types.js';
 import { confirmAction, type ConfirmData } from '../../src/tools/confirm_action.js';
 import { prepareAction, type PreparedData } from '../../src/tools/prepare_action.js';
+import { createPostureScanner } from '../../src/domain/posture/index.js';
 import { InMemoryPendingActionStore } from '../fakes/fakeActions.js';
+import { InMemorySecurityStore } from '../fakes/fakeSecurity.js';
 import { InMemoryDeployStore } from '../fakes/fakeDeploys.js';
 import {
   InMemoryAckStore,
@@ -41,6 +43,9 @@ const DEMO = process.env['DEMO_TARGET_URL'] ?? 'http://127.0.0.1:18080';
 const TOKEN = process.env['DEMO_ADMIN_TOKEN'] ?? '';
 
 const deployStore = new InMemoryDeployStore();
+/** Tests move this forward to pass time-based limits (e.g. 1 scan per minute) without sleeping. */
+let clockOffsetMs = 0;
+const clock = () => new Date(Date.now() + clockOffsetMs);
 const catalog = loadServiceConfig(resolve(__dirname, '../../config/nightshift.yaml'), process.env);
 
 /** The real admin-API executor, wrapped to count executions. */
@@ -76,8 +81,17 @@ const deps: ToolDeps = {
   executors: new ExecutorRegistry(new Map([['demo-admin', countingAdmin]])),
   deployLog: deployStore,
   pendingActions: new InMemoryPendingActionStore(),
+  security: new InMemorySecurityStore(),
+  posture: createPostureScanner({
+    security: catalog.security,
+    services: catalog.services,
+    prometheus: new HttpPrometheusClient(catalog.prometheus.url, catalog.prometheus.timeoutMs),
+    githubApiUrl: catalog.github.apiUrl,
+    githubToken: undefined,
+    now: () => new Date(),
+  }),
   timeZone: catalog.display.timeZone,
-  now: () => new Date(),
+  now: clock,
   serverVersion: 'integration',
   startedAt: new Date(),
 };

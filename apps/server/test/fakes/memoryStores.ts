@@ -1,5 +1,6 @@
 import type {
   IncidentEventInput,
+  IncidentEventRecord,
   IncidentRecord,
   IncidentStore,
 } from '../../src/db/incidentStore.js';
@@ -45,8 +46,9 @@ export class InMemorySilenceStore implements SilenceStore {
 
 export class InMemoryIncidentStore implements IncidentStore {
   readonly incidents: IncidentRecord[] = [];
-  readonly events: (IncidentEventInput & { incidentId: string; createdAt: Date })[] = [];
+  readonly eventLog: IncidentEventRecord[] = [];
   private nextId = 1;
+  private nextEventId = 1;
   constructor(private readonly now: () => Date = () => new Date()) {}
 
   async findOpen(service: string) {
@@ -55,18 +57,39 @@ export class InMemoryIncidentStore implements IncidentStore {
       .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime())[0];
   }
 
+  async get(id: string) {
+    return this.incidents.find((i) => i.id === id);
+  }
+
+  async latest(filter: { service?: string; status?: 'open' | 'resolved' } = {}) {
+    return this.incidents
+      .filter(
+        (i) =>
+          (!filter.service || i.service === filter.service) &&
+          (!filter.status || i.status === filter.status),
+      )
+      .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime())[0];
+  }
+
+  async listOpen() {
+    return this.incidents
+      .filter((i) => i.status === 'open')
+      .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime());
+  }
+
   async open(input: {
     title: string;
     severity: string;
     service: string;
     primaryCause: string | null;
   }) {
-    const record = {
+    const record: IncidentRecord = {
       ...input,
       id: `incident-${this.nextId++}`,
       status: 'open',
       openedAt: this.now(),
       updatedAt: this.now(),
+      resolvedAt: null,
     };
     this.incidents.push(record);
     return record;
@@ -82,7 +105,23 @@ export class InMemoryIncidentStore implements IncidentStore {
     return i;
   }
 
+  async resolve(id: string, at: Date) {
+    const i = this.incidents.find((x) => x.id === id);
+    if (!i) throw new Error(`no incident ${id}`);
+    Object.assign(i, { status: 'resolved', resolvedAt: at, updatedAt: at });
+    return i;
+  }
+
   async appendEvent(incidentId: string, e: IncidentEventInput) {
-    this.events.push({ ...e, incidentId, createdAt: this.now() });
+    this.eventLog.push({
+      ...e,
+      id: `event-${this.nextEventId++}`,
+      incidentId,
+      createdAt: this.now(),
+    });
+  }
+
+  async events(incidentId: string) {
+    return this.eventLog.filter((e) => e.incidentId === incidentId);
   }
 }

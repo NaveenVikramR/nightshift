@@ -72,7 +72,7 @@ describe('confirm_action', () => {
     });
     expect(f.pendingActions.rows.get(id)).toMatchObject({ status: 'succeeded', executedAt: NOW });
     expect(
-      f.incidents.events
+      f.incidents.eventLog
         .filter((e) => e.incidentId === incident.id)
         .map((e) => (e.data as { stage: string }).stage),
     ).toEqual(['prepared', 'confirmed', 'executed', 'verified']);

@@ -1,15 +1,6 @@
 import { z } from 'zod';
-import type { PromSample } from '../clients/prometheus.js';
-import {
-  breakerStateFromValue,
-  evaluateHealth,
-  speakHealth,
-  type HealthAssessment,
-  type HealthSignals,
-} from '../domain/health/health.js';
-import { log } from '../lib/log.js';
-import { capitalize } from '../domain/spoken.js';
-import { sanitizeLabel, toSpokenWords } from '../lib/untrusted.js';
+import { checkHealth, speakServiceHealth } from '../domain/health/checkHealth.js';
+import type { HealthAssessment, HealthSignals } from '../domain/health/health.js';
 import { lookupService, type Clarification } from './common.js';
 import type { ToolDefinition } from './types.js';
 
@@ -36,12 +27,6 @@ export interface ServiceHealthData {
   checkedAt: string;
 }
 
-/** First finite value of a single-number query, else null (no data is never invented). */
-function singleValue(samples: PromSample[]): number | null {
-  const finite = samples.map((s) => s.value).filter(Number.isFinite);
-  return finite.length > 0 ? finite[0]! : null;
-}
-
 export const getServiceHealth: ToolDefinition<
   typeof inputSchema,
   ServiceHealthData | Clarification
@@ -65,60 +50,10 @@ export const getServiceHealth: ToolDefinition<
     const found = lookupService(input.service, deps.services);
     if (found.kind === 'clarify') return found.output;
     const svc = found.service;
-    const q = svc.queries;
-
-    // Optional context: never makes the check fail on its own.
-    const activeP = q.activeProvider
-      ? deps.prometheus
-          .instant(q.activeProvider)
-          .then((samples) => {
-            const on = samples.find((x) => x.value === 1);
-            return on ? sanitizeLabel(on.labels[svc.breakerLabel]) || null : null;
-          })
-          .catch(() => null)
-      : Promise.resolve(null);
-    const settled = await Promise.allSettled([
-      deps.prometheus.instant(q.errorRate),
-      deps.prometheus.instant(q.latencyP95),
-      deps.prometheus.instant(q.throughput),
-      q.breakers ? deps.prometheus.instant(q.breakers) : Promise.resolve(null),
-    ]);
-    const failures = settled.filter((s): s is PromiseRejectedResult => s.status === 'rejected');
-    if (failures.length === settled.length - (q.breakers ? 0 : 1)) throw failures[0]!.reason;
-    for (const f of failures) {
-      log.warn('health query failed', {
-        service: svc.name,
-        error: f.reason instanceof Error ? f.reason.message : 'unknown',
-      });
-    }
-
-    const value = <T>(i: number, map: (s: PromSample[]) => T): T | null => {
-      const s = settled[i];
-      return s?.status === 'fulfilled' && s.value !== null ? map(s.value) : null;
-    };
-    const signals: HealthSignals = {
-      errorRate: value(0, singleValue),
-      latencyP95Seconds: value(1, singleValue),
-      throughputRps: value(2, singleValue),
-      breakers: value(3, (samples) =>
-        samples
-          .filter((s) => Number.isFinite(s.value))
-          .map((s) => ({
-            dependency: sanitizeLabel(s.labels[svc.breakerLabel]) || 'unknown dependency',
-            state: breakerStateFromValue(s.value),
-          })),
-      ),
-    };
-
-    const assessment = evaluateHealth(signals, svc.thresholds);
-    const activeProvider = await activeP;
-    const primary = svc.actions.failover_provider?.providers[0];
-    const routing =
-      activeProvider && primary && activeProvider !== primary
-        ? ` Routing to ${capitalize(toSpokenWords(activeProvider))}.`
-        : '';
+    const h = await checkHealth(svc, deps.prometheus);
+    const { signals, assessment, activeProvider } = h;
     return {
-      speak: `${speakHealth(svc.displayName, signals, assessment)}${routing}`,
+      speak: speakServiceHealth(svc, h),
       data: {
         service: svc.name,
         displayName: svc.displayName,

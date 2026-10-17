@@ -6,6 +6,7 @@ import { FakeAlertmanager } from './fakeAlertmanager.js';
 import { ExecutorRegistry } from '../../src/domain/actions/executors/registry.js';
 import { FakeExecutor, InMemoryPendingActionStore } from './fakeActions.js';
 import { FakeDeploys, InMemoryDeployStore } from './fakeDeploys.js';
+import { fakeScanner, InMemorySecurityStore, type FakeCheck } from './fakeSecurity.js';
 import { FakePrometheus } from './fakePrometheus.js';
 import { InMemoryAuditLog } from './inMemoryAuditLog.js';
 import { InMemoryAckStore, InMemoryIncidentStore, InMemorySilenceStore } from './memoryStores.js';
@@ -69,6 +70,8 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
   const executor = new FakeExecutor();
   const executors = new ExecutorRegistry(new Map([[executor.name, executor]]));
   const pendingActions = new InMemoryPendingActionStore(now);
+  const security = new InMemorySecurityStore();
+  const checks: FakeCheck[] = [];
   const deps: ToolDeps = {
     audit,
     prometheus,
@@ -80,6 +83,8 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
     incidents,
     executors,
     pendingActions,
+    security,
+    posture: fakeScanner(checks),
     deployLog: deployStore,
     sleep: async () => {},
     timeZone: 'UTC',
@@ -100,6 +105,9 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
     incidents,
     executor,
     pendingActions,
+    security,
+    /** Push FakeChecks here; run_security_scan runs exactly these. */
+    checks,
   };
 }
 

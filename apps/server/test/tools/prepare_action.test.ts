@@ -112,7 +112,7 @@ describe('prepare_action', () => {
     const r = await prepare(f, { suggested_action: suggestion });
     expect(r.isError).toBe(false);
     expect(r.data.incidentId).toBe(explained.data.incidentId);
-    expect(f.incidents.events.at(-1)).toMatchObject({
+    expect(f.incidents.eventLog.at(-1)).toMatchObject({
       kind: 'action',
       actor: 'alice',
       message: 'prepared failover_provider razorpay -> stripe (expires in 2 min)',
