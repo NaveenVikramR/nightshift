@@ -33,7 +33,7 @@ describe('explain_incident', () => {
     [
       'latency_spike',
       {},
-      "Warning. Payments API p95 latency is at 2.1 seconds for 6 minutes, but errors are normal. Looks like saturation, maybe database connections. Worth investigating; I won't act on this.",
+      "Warning. Payments API p95 latency is 2.1 seconds, but errors are normal. Looks like saturation, maybe database connections. Worth investigating; I won't act on it.",
     ],
     [
       'auth_bruteforce',

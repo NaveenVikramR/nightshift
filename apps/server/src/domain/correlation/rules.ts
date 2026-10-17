@@ -239,21 +239,29 @@ const notChecked = (sources: readonly SourceStatus[]): EvidenceItem[] =>
 // --- rules ------------------------------------------------------------------
 
 /** Deploy within ±10 min of the error onset (else the latency onset). */
+/** The onset deploys are compared against: errors, else latency. */
+function anchorOf(f: Facts): { signal: SignalName; time: Date } | undefined {
+  for (const signal of ['errorRate', 'latencyP95'] as const) {
+    const o = onsetOf(f.onsets[signal]);
+    if (o) return { signal, time: o.time };
+  }
+  return undefined;
+}
+
+/**
+ * Deploy within 10 min BEFORE the error (else latency) onset. A deploy after
+ * the onset cannot have caused it: it is never a cause (see exoneratedDeploys).
+ */
 export function recentDeployRule(e: Evidence, f: Facts): Cause | undefined {
-  const anchorSignal: SignalName | undefined = onsetOf(f.onsets.errorRate)
-    ? 'errorRate'
-    : onsetOf(f.onsets.latencyP95)
-      ? 'latencyP95'
-      : undefined;
-  if (!anchorSignal) return undefined;
-  const anchor = onsetOf(f.onsets[anchorSignal])!.time;
+  const a = anchorOf(f);
+  if (!a) return undefined;
+  const { signal: anchorSignal, time: anchor } = a;
 
   let best: { deploy: Evidence['deploys'][number]; confidence: number } | undefined;
   for (const d of e.deploys) {
     const delta = anchor.getTime() - d.deployedAt.getTime();
-    if (Math.abs(delta) > DEPLOY_WINDOW_MS) continue;
-    const closeness = 0.9 - 0.4 * (Math.abs(delta) / DEPLOY_WINDOW_MS);
-    const confidence = round(delta >= 0 ? closeness : closeness * 0.5, 2);
+    if (delta < 0 || delta > DEPLOY_WINDOW_MS) continue;
+    const confidence = round(0.9 - 0.4 * (delta / DEPLOY_WINDOW_MS), 2);
     if (!best || confidence > best.confidence) best = { deploy: d, confidence };
   }
   if (!best) return undefined;
@@ -267,11 +275,34 @@ export function recentDeployRule(e: Evidence, f: Facts): Cause | undefined {
     suggestedActions: [
       {
         action: 'rollback_deploy',
-        params: { service: e.service.name, version: d.version },
+        params: { service: e.service.name, fromVersion: d.version },
         requiresConfirmation: true,
       },
     ],
   };
+}
+
+/** Deploys that landed AFTER the onset: evidence that they are not the cause. */
+export function exoneratedDeploys(e: Evidence, f: Facts): EvidenceItem[] {
+  const a = anchorOf(f);
+  if (!a) return [];
+  return e.deploys
+    .filter((d) => d.deployedAt.getTime() > a.time.getTime())
+    .map((d) => {
+      const minutes = minutesBetween(a.time, d.deployedAt);
+      return {
+        kind: 'deploy' as const,
+        at: iso(d.deployedAt),
+        text: `Errors started ${minutes} min before deploy ${d.version} at ${iso(d.deployedAt)}, so it is not the cause.`,
+        values: {
+          version: d.version,
+          deployedAt: iso(d.deployedAt),
+          onset: iso(a.time),
+          minutesAfterOnset: minutes,
+          exonerated: true,
+        },
+      };
+    });
 }
 
 /** Breaker open on one provider while the others are closed. */
@@ -428,13 +459,15 @@ function noClearCause(e: Evidence, f: Facts, alerts: Diagnosis['alerts']): Cause
 
 function breakerAfterDeploy(e: Evidence, f: Facts): BreakerRelation[] {
   const relations: BreakerRelation[] = [];
+  const onset = anchorOf(f)?.time;
   for (const b of f.breakers) {
     if (b.change.kind !== 'entered') continue;
     const opened = b.change.at;
     const deploy = e.deploys
       .filter((d) => {
         const after = opened.getTime() - d.deployedAt.getTime();
-        return after >= 0 && after <= DEPLOY_WINDOW_MS;
+        const errorsFirst = onset !== undefined && onset.getTime() < d.deployedAt.getTime();
+        return after >= 0 && after <= DEPLOY_WINDOW_MS && !errorsFirst;
       })
       .sort((a, b2) => b2.deployedAt.getTime() - a.deployedAt.getTime())[0];
     if (deploy) {
@@ -475,6 +508,10 @@ export function diagnose(e: Evidence): Diagnosis {
   const wrong = causes.length > 0 || somethingWrong(e, facts);
   if (causes.length === 0 && wrong) causes = [noClearCause(e, facts, alerts)];
   causes.sort((a, b) => b.confidence - a.confidence);
+  const exonerated = exoneratedDeploys(e, facts);
+  if (exonerated.length > 0) {
+    causes = causes.map((c) => ({ ...c, evidence: [...c.evidence, ...exonerated] }));
+  }
 
   return {
     service: { name: e.service.name, displayName: e.service.displayName },

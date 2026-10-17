@@ -62,7 +62,7 @@ describe('diagnose (rules over evidence)', () => {
     expect(deploy.suggestedActions).toEqual([
       {
         action: 'rollback_deploy',
-        params: { service: 'payments-api', version: 'v1.4.2' },
+        params: { service: 'payments-api', fromVersion: 'v1.4.2' },
         requiresConfirmation: true,
       },
     ]);
@@ -154,19 +154,39 @@ describe('diagnose (rules over evidence)', () => {
     });
   });
 
-  it('a deploy long before the onset is not blamed; one just after is weaker', async () => {
+  it('a deploy long before the onset is not blamed', async () => {
     const before = await run('provider_outage', {
       tweak: (f) =>
         f.deploys.add({ service: 'payments-api', version: 'v1.4.0', deployedAt: minutesAgo(30) }),
     });
     expect(ids(before)).toEqual(['provider_failure']);
+  });
 
-    const after = await run('provider_outage', {
+  it('errors starting 2 min before a deploy: the deploy is not a cause, and the evidence says so', async () => {
+    // provider_outage errors start at 11:56:30; deploy at 11:58:30
+    const d = await run('provider_outage', {
+      tweak: (f) =>
+        f.deploys.add({ service: 'payments-api', version: 'v1.4.3', deployedAt: minutesAgo(1.5) }),
+    });
+    expect(ids(d)).toEqual(['provider_failure']);
+    expect(d.relations).toEqual([]);
+    expect(d.causes[0]!.suggestedActions.map((a) => a.action)).toEqual(['failover_provider']);
+    const note = d.causes[0]!.evidence.find((e) => e.values['exonerated'] === true)!;
+    expect(note.text).toBe(
+      'Errors started 2 min before deploy v1.4.3 at 2026-10-16T11:58:30.000Z, so it is not the cause.',
+    );
+    expect(note.values).toMatchObject({ version: 'v1.4.3', minutesAfterOnset: 2 });
+  });
+
+  it('a deploy after the onset is never blamed in speak or suggested for rollback', async () => {
+    const d = await run('latency_spike', {
       tweak: (f) =>
         f.deploys.add({ service: 'payments-api', version: 'v1.4.3', deployedAt: minutesAgo(1) }),
     });
-    const deploy = after.causes.find((c) => c.id === 'recent_deploy')!;
-    expect(deploy.confidence).toBeLessThan(0.45);
+    expect(ids(d)).toEqual(['saturation']);
+    expect(
+      d.causes.flatMap((c) => c.suggestedActions).some((a) => a.action === 'rollback_deploy'),
+    ).toBe(false);
   });
 
   it('prompt-injection commit: quoted only, causes and actions unchanged (invariant 6)', async () => {

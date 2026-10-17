@@ -78,7 +78,8 @@ function deployAndBreaker(d: Diagnosis, ctx: SpeakContext): string[] | undefined
   const rel = d.relations[0];
   const provider = cause(d, 'provider_failure');
   const deploy = cause(d, 'recent_deploy');
-  if (!rel || !provider || !deploy) return undefined;
+  // Only blame the deploy when the rules do (it came before the onset).
+  if (!rel || !provider || !deploy || deploy.confidence < 0.5) return undefined;
   const sev = SEVERITY_WORD[d.severity];
   const head = errorHeadline(d, ctx);
   const clock = spokenClock(rel.deployedAt, ctx.timeZone);
@@ -156,14 +157,15 @@ function deployOnly(d: Diagnosis, ctx: SpeakContext, c: Cause): string[] {
   ];
 }
 
-function saturation(d: Diagnosis, ctx: SpeakContext): string[] {
-  const o = d.facts.onsets.latencyP95;
-  const latency = current(o);
+/** ~25 words: latency first, why it looks like saturation, no action offered. */
+function saturation(d: Diagnosis): string[] {
+  const latency = current(d.facts.onsets.latencyP95);
   const svc = capitalize(d.service.displayName);
-  const lat = latency !== undefined ? ` at ${spokenSeconds(latency)}` : '';
+  const sev = SEVERITY_WORD[d.severity];
+  const lat = latency !== undefined ? ` ${spokenSeconds(latency)}` : ' high';
   return [
-    `${SEVERITY_WORD[d.severity]}. ${svc} p95 latency is${lat}${forHowLong(o, ctx.now)}, but errors are normal. Looks like saturation, maybe database connections. Worth investigating; I won't act on this.`,
-    `${SEVERITY_WORD[d.severity]}. ${svc} p95 latency is${lat}, errors are normal. Looks like saturation. Worth investigating; I won't act on this.`,
+    `${sev}. ${svc} p95 latency is${lat}, but errors are normal. Looks like saturation, maybe database connections. Worth investigating; I won't act on it.`,
+    `${sev}. ${svc} p95 latency is${lat}, errors are normal. Looks like saturation; I won't act on it.`,
   ];
 }
 
@@ -246,7 +248,7 @@ export function speechVariants(d: Diagnosis, ctx: SpeakContext): string[] {
       return v.length > 0 ? v : noClearCause(d, ctx);
     }
     case 'saturation':
-      return saturation(d, ctx);
+      return saturation(d);
     case 'possible_attack':
       return attack(d, ctx);
     default:
