@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Metrics } from './metrics.ts';
 import {
   BAD_DEPLOY_DELAY,
+  VERSION_PATTERN,
   DemoState,
   isProvider,
   isScenario,
@@ -48,11 +49,14 @@ export interface DemoServerOptions {
 /**
  * GET  /metrics                    Prometheus exposition
  * GET  /healthz                    liveness
+ * GET  /readyz                     readiness (503 while restarting)
  * GET  /admin/state                (admin) current chaos state
  * POST /admin/chaos/:scenario      (admin) enable a failure scenario
  *      /admin/chaos/bad_deploy?delaySeconds=60  razorpay starts failing after the delay
  * POST /admin/reset                (admin) clear all scenarios, route back to razorpay
  * POST /admin/route-provider       (admin) {"provider":"stripe"} failover target
+ * POST /admin/rollback             (admin) {"version":"v1.4.1"} deploy another version
+ * POST /admin/restart              (admin) ~5 s of unavailability, then normal
  */
 export function createDemoServer({ state, metrics, adminToken }: DemoServerOptions): Server {
   const adminDigest = digest(adminToken);
@@ -70,6 +74,12 @@ export function createDemoServer({ state, metrics, adminToken }: DemoServerOptio
       if (req.method === 'GET' && path === '/healthz') {
         res.writeHead(200, { 'content-type': 'text/plain' });
         res.end('ok');
+        return;
+      }
+      if (req.method === 'GET' && path === '/readyz') {
+        const ready = !state.isRestarting();
+        res.writeHead(ready ? 200 : 503, { 'content-type': 'text/plain' });
+        res.end(ready ? 'ready' : 'restarting');
         return;
       }
       if (!path.startsWith('/admin/')) return send(res, 404, { error: 'not_found' });
@@ -102,6 +112,21 @@ export function createDemoServer({ state, metrics, adminToken }: DemoServerOptio
         }
         state.enable(scenario, delaySeconds === undefined ? {} : { delaySeconds });
         metrics.updateBreakers(state);
+        return send(res, 200, state.snapshot());
+      }
+
+      if (req.method === 'POST' && path === '/admin/rollback') {
+        const body = (await readJson(req)) as { version?: unknown };
+        if (typeof body.version !== 'string' || !VERSION_PATTERN.test(body.version)) {
+          return send(res, 400, { error: 'invalid_version' });
+        }
+        state.rollbackTo(body.version);
+        metrics.updateBreakers(state);
+        return send(res, 200, state.snapshot());
+      }
+
+      if (req.method === 'POST' && path === '/admin/restart') {
+        state.restart();
         return send(res, 200, state.snapshot());
       }
 

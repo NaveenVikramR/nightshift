@@ -34,6 +34,10 @@ const deploySourceSchema = z.discriminatedUnion('source', [
   }),
 ]);
 
+const executorName = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9_-]{0,62}$/, 'lowercase letters, digits, - and _');
+
 const serviceSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/, 'lowercase letters, digits, - and _'),
   displayName: z.string().min(1).max(40),
@@ -47,6 +51,8 @@ const serviceSchema = z.object({
     authFailures: z.string().min(1).optional(),
     /** Webhooks rejected for a bad signature, per second (security signal). */
     webhookFailures: z.string().min(1).optional(),
+    /** Series with value 1 for the provider receiving traffic (label `breakerLabel`). */
+    activeProvider: z.string().min(1).optional(),
   }),
   breakerLabel: z.string().min(1).default('provider'),
   thresholds: z
@@ -64,7 +70,41 @@ const serviceSchema = z.object({
     })
     .default(DEFAULT_THRESHOLDS),
   deploys: deploySourceSchema.optional(),
+  /** Remediations allowed for this service and who performs them. Anything absent is refused. */
+  actions: z
+    .object({
+      failover_provider: z
+        .object({ executor: executorName, providers: z.array(z.string().min(1).max(64)).min(2) })
+        .optional(),
+      rollback_deploy: z.object({ executor: executorName }).optional(),
+      restart_service: z.object({ executor: executorName }).optional(),
+    })
+    .strict()
+    .default({}),
 });
+
+const envVarName = z
+  .string()
+  .regex(/^[A-Z][A-Z0-9_]{0,63}$/, 'an env var name, e.g. DEMO_ADMIN_TOKEN');
+const timeoutMs = z.number().int().min(100).max(60_000);
+
+/** Who can perform actions. Secrets are only referenced by env var name. */
+const executorSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('admin_api'),
+    url: httpUrl,
+    tokenEnv: envVarName,
+    timeoutMs: timeoutMs.default(5000),
+  }),
+  z.object({
+    type: z.literal('github_workflow'),
+    repo: z.string().regex(/^[\w.-]{1,100}\/[\w.-]{1,100}$/, 'must be owner/name'),
+    workflow: z.string().regex(/^[\w.-]{1,100}$/, 'a workflow file name or id'),
+    ref: z.string().min(1).max(100).default('main'),
+    tokenEnv: envVarName,
+    timeoutMs: timeoutMs.default(8000),
+  }),
+]);
 
 const timeZone = z.string().refine((tz) => {
   try {
@@ -94,6 +134,7 @@ const serviceConfigSchema = z
         timeoutMs: z.number().int().min(100).max(60_000).default(8000),
       })
       .default({ apiUrl: 'https://api.github.com', timeoutMs: 8000 }),
+    executors: z.record(executorName, executorSchema).default({}),
   })
   .superRefine((c, ctx) => {
     const seen = new Set<string>();
@@ -102,12 +143,29 @@ const serviceConfigSchema = z
         ctx.addIssue({ code: 'custom', path: ['services', i, 'name'], message: 'duplicate name' });
       }
       seen.add(s.name);
+      for (const [action, cfg] of Object.entries(s.actions)) {
+        const executor = cfg && c.executors[cfg.executor];
+        if (cfg && !executor) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['services', i, 'actions', action, 'executor'],
+            message: `unknown executor "${cfg.executor}"`,
+          });
+        } else if (executor?.type === 'github_workflow' && action !== 'rollback_deploy') {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['services', i, 'actions', action, 'executor'],
+            message: 'a github_workflow executor can only do rollback_deploy',
+          });
+        }
+      }
     });
   });
 
 export type ServiceConfig = z.infer<typeof serviceConfigSchema>;
 export type ServiceDef = ServiceConfig['services'][number];
 export type DeploySourceConfig = NonNullable<ServiceDef['deploys']>;
+export type ExecutorConfig = ServiceConfig['executors'][string];
 
 /** Validate a parsed config object, applying env URL overrides. */
 export function parseServiceConfig(

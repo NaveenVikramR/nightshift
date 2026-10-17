@@ -36,6 +36,10 @@ export function simulatePaymentsRequest(state: DemoState, rng: Rng): SimulatedRe
     status = 503; // breaker open: fail fast
     durationSeconds = 0.005 + rng() * 0.01;
   }
+  if (state.isRestarting()) {
+    status = 503; // restarting: not ready
+    durationSeconds = 0.002 + rng() * 0.003;
+  }
 
   return { service: PAYMENTS, route, status, durationSeconds, ...(provider && { provider }) };
 }

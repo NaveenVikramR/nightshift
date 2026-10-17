@@ -110,6 +110,7 @@ describe('list_active_alerts', () => {
         aliases: [],
         queries: { errorRate: 'x', latencyP95: 'y', throughput: 'z' },
         breakerLabel: 'provider',
+        actions: {},
         thresholds: {
           errorRate: 0.05,
           latencyP95Seconds: 1,

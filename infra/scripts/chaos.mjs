@@ -25,6 +25,13 @@ if (!token) {
   process.exit(1);
 }
 
+const BASELINE_DEPLOY = {
+  service: 'payments-api',
+  version: 'v1.4.1',
+  commitMessage: 'stable payments release',
+  author: 'ci',
+};
+
 const BAD_DEPLOY = {
   service: 'payments-api',
   version: 'v1.4.2',
@@ -41,24 +48,37 @@ async function reportDeploy() {
     );
     process.exit(1);
   }
-  let res;
-  try {
-    res = await fetch(`${url}/events/deploy`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${ingestToken}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ ...BAD_DEPLOY, externalId: `chaos-bad-deploy-${Date.now()}` }),
-    });
-  } catch (err) {
-    console.error(
-      `Could not reach Nightshift at ${url} (${err.cause?.code ?? err.message}). Is it running?`,
-    );
-    process.exit(1);
-  }
-  const body = await res.text();
-  if (!res.ok) {
-    console.error(`Nightshift refused the deploy event (${res.status}): ${body}`);
-    process.exit(1);
-  }
+  const post = async (event) => {
+    let res;
+    try {
+      res = await fetch(`${url}/events/deploy`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ingestToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+    } catch (err) {
+      console.error(
+        `Could not reach Nightshift at ${url} (${err.cause?.code ?? err.message}). Is it running?`,
+      );
+      process.exit(1);
+    }
+    const body = await res.text();
+    if (!res.ok) {
+      console.error(`Nightshift refused the deploy event (${res.status}): ${body}`);
+      process.exit(1);
+    }
+    return body;
+  };
+
+  // The version running before the bad deploy, so rollback has a target. Once
+  // per day (idempotent externalId), dated two hours back.
+  const day = new Date().toISOString().slice(0, 10);
+  await post({
+    ...BASELINE_DEPLOY,
+    externalId: `chaos-baseline-v1.4.1-${day}`,
+    deployedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+  });
+  const body = await post({ ...BAD_DEPLOY, externalId: `chaos-bad-deploy-${Date.now()}` });
   console.log(`deploy recorded -> ${body}`);
 }
 

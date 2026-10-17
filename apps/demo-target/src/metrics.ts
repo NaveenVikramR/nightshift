@@ -28,6 +28,12 @@ export function createMetrics() {
     labelNames: ['service', 'provider'] as const,
     registers: [registry],
   });
+  const providerActive = new Gauge({
+    name: 'payment_provider_active',
+    help: 'Payment provider currently receiving traffic: 1 active, 0 standby.',
+    labelNames: ['service', 'provider'] as const,
+    registers: [registry],
+  });
   const authFailures = new Counter({
     name: 'auth_failures_total',
     help: 'Failed authentication attempts.',
@@ -58,6 +64,10 @@ export function createMetrics() {
         breaker.set(
           { service: PAYMENTS, provider },
           state.isProviderDown(provider) ? BREAKER.open : BREAKER.closed,
+        );
+        providerActive.set(
+          { service: PAYMENTS, provider },
+          state.activeProvider === provider ? 1 : 0,
         );
       }
     },

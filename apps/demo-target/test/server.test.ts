@@ -62,6 +62,22 @@ describe('demo-target HTTP API', () => {
     }
   });
 
+  it('rolls back to a version and restarts, with readiness during the restart', async () => {
+    await admin('/admin/chaos/bad_deploy?delaySeconds=0');
+    const rb = await admin('/admin/rollback', { body: JSON.stringify({ version: 'v1.4.1' }) });
+    expect(rb.status).toBe(200);
+    expect(await rb.json()).toMatchObject({ version: 'v1.4.1', downProviders: [], scenarios: [] });
+    expect(
+      (await admin('/admin/rollback', { body: JSON.stringify({ version: 'main; rm' }) })).status,
+    ).toBe(400);
+
+    expect((await fetch(`${base}/readyz`)).status).toBe(200);
+    const rs = await admin('/admin/restart');
+    expect(await rs.json()).toMatchObject({ restarting: true });
+    expect((await fetch(`${base}/readyz`)).status).toBe(503);
+    expect((await admin('/admin/restart', {}, 'wrong')).status).toBe(401);
+  });
+
   it('rejects unknown scenarios and providers', async () => {
     expect((await admin('/admin/chaos/rm_rf')).status).toBe(404);
     const bad = await admin('/admin/route-provider', { body: JSON.stringify({ provider: 'x' }) });

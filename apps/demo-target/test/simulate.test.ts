@@ -76,6 +76,8 @@ describe('payments-api simulation', () => {
       scenarios: [],
       activeProvider: 'razorpay',
       downProviders: [],
+      version: 'v1.4.1',
+      restarting: false,
     });
   });
 });
@@ -98,5 +100,24 @@ describe('metrics', () => {
     }
     expect(text).toContain('circuit_breaker_state{service="payments-api",provider="razorpay"} 1');
     expect(text).toContain('circuit_breaker_state{service="payments-api",provider="stripe"} 0');
+  });
+});
+
+describe('restart and active provider', () => {
+  it('payments requests fail fast while restarting', () => {
+    const state = new DemoState();
+    state.restart();
+    const rs = sample(state, 200);
+    expect(rs.every((r) => r.status === 503)).toBe(true);
+  });
+
+  it('exposes which provider is active', async () => {
+    const state = new DemoState();
+    const metrics = createMetrics();
+    state.routeTo('stripe');
+    metrics.updateBreakers(state);
+    const text = await metrics.registry.metrics();
+    expect(text).toContain('payment_provider_active{service="payments-api",provider="stripe"} 1');
+    expect(text).toContain('payment_provider_active{service="payments-api",provider="razorpay"} 0');
   });
 });

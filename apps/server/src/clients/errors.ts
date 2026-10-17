@@ -1,6 +1,6 @@
 import { UserFacingError } from '../lib/errors.js';
 
-export type Upstream = 'Prometheus' | 'Alertmanager' | 'GitHub' | 'Database';
+export type Upstream = 'Prometheus' | 'Alertmanager' | 'GitHub' | 'Database' | 'AdminApi';
 export type ClientErrorKind = 'unreachable' | 'timeout' | 'bad_response' | 'rejected';
 
 /** How each upstream is named out loud (sentence-initial form). */
@@ -9,8 +9,9 @@ const SPOKEN: Record<Upstream, string> = {
   Alertmanager: 'Alertmanager',
   GitHub: 'GitHub',
   Database: 'The Nightshift database',
+  AdminApi: 'The service admin API',
 };
-const spokenMid = (u: Upstream) => (u === 'Database' ? 'the Nightshift database' : SPOKEN[u]);
+const spokenMid = (u: Upstream) => SPOKEN[u].replace(/^The /, 'the ');
 
 const SPEAK: Record<ClientErrorKind, (u: Upstream) => string> = {
   unreachable: (u) => `I couldn't reach ${spokenMid(u)}. Try again in a minute.`,

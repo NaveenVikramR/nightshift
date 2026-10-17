@@ -35,3 +35,37 @@ describe('bad_deploy', () => {
     expect(state.isProviderDown('razorpay')).toBe(true);
   });
 });
+
+describe('rollback and restart', () => {
+  it('rolling back from the bad version stops the bad_deploy failure', () => {
+    const clock = { now: 0 };
+    const state = new DemoState(() => clock.now);
+    state.enable('bad_deploy', { delaySeconds: 0 });
+    expect(state.snapshot()).toMatchObject({ version: 'v1.4.2', downProviders: ['razorpay'] });
+
+    state.rollbackTo('v1.4.1');
+    expect(state.snapshot()).toMatchObject({
+      version: 'v1.4.1',
+      scenarios: [],
+      downProviders: [],
+    });
+  });
+
+  it('a rollback does not fix an unrelated provider outage', () => {
+    const state = new DemoState();
+    state.enable('provider_outage');
+    state.rollbackTo('v1.4.0');
+    expect(state.isProviderDown('razorpay')).toBe(true);
+  });
+
+  it('restart makes the service unavailable for 5 s, then normal', () => {
+    const clock = { now: 1000 };
+    const state = new DemoState(() => clock.now);
+    state.restart();
+    expect(state.isRestarting()).toBe(true);
+    clock.now += 4999;
+    expect(state.isRestarting()).toBe(true);
+    clock.now += 1;
+    expect(state.isRestarting()).toBe(false);
+  });
+});

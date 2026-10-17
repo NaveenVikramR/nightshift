@@ -29,6 +29,8 @@ services:
       breakers: circuit_breaker_state{service="payments-api"}
       # Security signals (per second). Optional.
       authFailures: sum(rate(auth_failures_total{service="payments-api"}[1m]))
+      # Which provider receives traffic (value 1; label from breakerLabel). Optional.
+      activeProvider: payment_provider_active{service="payments-api"} == 1
     breakerLabel: provider
     thresholds:
       errorRate: 0.05 # ratio, 0-1
@@ -40,6 +42,12 @@ services:
     deploys:
       source: ingest
       environment: production
+    # Remediations Nightshift may perform here (two-phase confirmed). Anything
+    # not listed is refused. Executors are defined at the bottom of this file.
+    actions:
+      failover_provider: { executor: demo-admin, providers: [razorpay, stripe] }
+      rollback_deploy: { executor: demo-admin }
+      restart_service: { executor: demo-admin }
 
   - name: webhook-receiver
     displayName: webhook receiver
@@ -60,6 +68,16 @@ services:
     deploys:
       source: ingest
       environment: production
+
+# Who performs actions. Secrets are referenced by env var name only.
+#   admin_api:       the Nightshift admin API contract (see README "Safety model")
+#   github_workflow: rollback_deploy via workflow_dispatch, e.g.
+#     gh-rollback: { type: github_workflow, repo: owner/name, workflow: rollback.yml, ref: main, tokenEnv: GITHUB_TOKEN }
+executors:
+  demo-admin:
+    type: admin_api
+    url: http://127.0.0.1:18080
+    tokenEnv: DEMO_ADMIN_TOKEN
 
 # How clock times are spoken ("the 2:41 deploy"). IANA zone; default UTC.
 display:
