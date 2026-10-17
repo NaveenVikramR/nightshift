@@ -175,3 +175,18 @@
 - **Time lost:** ~20 minutes
 - **Workaround:** Capped at 10 deployments; statuses and commits fetched in parallel through `/git/commits/{sha}`; a failed per-deployment call degrades that one deploy instead of the list.
 - **Suggestion:** Add an `include=latest_status,commit` option (or `latest_status` and `commit.message` fields) to the deployments list, so one call answers "what was deployed, when did it go live, and what changed".
+
+## FL-13: A 1-minute `rate()` can't show recovery within a ~20 s post-action check
+
+- **Date:** 2026-10-17
+- **Product / tool:** Prometheus 3.15 (PromQL `rate()` / `query`)
+- **Task attempted:** After `confirm_action` runs a failover or rollback, poll the error rate for about 20 s and report "recovered / recovering / no improvement".
+- **Steps taken:**
+  1. Reused the service's health query: `sum(rate(...{status=~"5.."}[1m])) / sum(rate(...[1m]))`.
+  2. Ran the live integration test: `bad_deploy`, then rollback; `provider_outage`, then failover.
+- **Expected:** The error ratio falls visibly within 20 s of the fix.
+- **Actual:** Both actions worked (demo-target confirmed v1.4.1 and Stripe), but verification said `no_improvement` both times. Twenty seconds after the fix, 40 of the 60 seconds in a 1-minute window still hold the bad period, so at best the ratio has dropped about 33%, and scrape lag makes it less.
+- **Severity:** Medium
+- **Time lost:** ~25 minutes (one failed 6-minute live run plus diagnosis)
+- **Workaround:** An optional per-service `verifyErrorRate` query with a short window (`rate[15s]`; scrape interval 5 s gives 3 samples), used for both the before and after readings so they are comparable. It falls back to the normal query when absent.
+- **Suggestion:** In the `rate()` docs, add a short note on how the range window delays detecting recovery (with the "window ≥ 4 × scrape interval" guidance next to it), since alerting and remediation tools commonly reuse dashboard queries.

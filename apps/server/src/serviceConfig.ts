@@ -53,6 +53,12 @@ const serviceSchema = z.object({
     webhookFailures: z.string().min(1).optional(),
     /** Series with value 1 for the provider receiving traffic (label `breakerLabel`). */
     activeProvider: z.string().min(1).optional(),
+    /**
+     * Short-window error ratio (e.g. rate[15s]) read right before and after an action.
+     * A 1-minute rate can't show a recovery within confirm_action's ~20 s check.
+     * Defaults to errorRate.
+     */
+    verifyErrorRate: z.string().min(1).optional(),
   }),
   breakerLabel: z.string().min(1).default('provider'),
   thresholds: z

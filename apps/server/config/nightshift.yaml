@@ -25,6 +25,10 @@ services:
         histogram_quantile(0.95,
         sum by (le) (rate(http_request_duration_seconds_bucket{service="payments-api"}[1m])))
       throughput: sum(rate(http_requests_total{service="payments-api"}[1m]))
+      # Short window for checking an action's effect (scrape is 5 s, so 15 s = 3 samples).
+      verifyErrorRate: >-
+        sum(rate(http_requests_total{service="payments-api",status=~"5.."}[15s]))
+        / clamp_min(sum(rate(http_requests_total{service="payments-api"}[15s])), 1e-9)
       # One series per dependency; value 0 closed, 1 open, 2 half-open.
       breakers: circuit_breaker_state{service="payments-api"}
       # Security signals (per second). Optional.

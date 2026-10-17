@@ -243,6 +243,20 @@ describe('confirm_action', () => {
     expect(r.speak).toBe(speak);
   });
 
+  it('verifies with the short-window query when configured (a 1-minute rate lags)', async () => {
+    const f = setup({ errorAfter: 0.45 }); // the 1-minute rate still looks broken
+    const [payments, ...others] = f.deps.services;
+    f.deps.services = [
+      { ...payments!, queries: { ...payments!.queries, verifyErrorRate: 'payments:verify' } },
+      ...others,
+    ];
+    f.prometheus.set('payments:verify', 0.5);
+    f.executor.onExecute = () => f.prometheus.set('payments:verify', 0.01);
+    const r = await confirm(f, await prepared(f));
+    expect(r.speak).toBe('Done. Payments API now uses Stripe. Recovered: errors at 1 percent.');
+    expect(r.data.verification).toMatchObject({ before: 0.5, after: 0.01, outcome: 'recovered' });
+  });
+
   it('a rollback records the new deploy in the history', async () => {
     const f = setup();
     f.deploys

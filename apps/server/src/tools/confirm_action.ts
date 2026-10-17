@@ -253,6 +253,12 @@ export const confirmAction: ToolDefinition<typeof inputSchema, ConfirmData> = {
       return finish('refused', out);
     }
 
+    // Before/after use the same short-window query, so they are comparable.
+    const verifyQuery = service.queries.verifyErrorRate ?? service.queries.errorRate;
+    const readErrorRate = async () =>
+      (await deps.prometheus.instant(verifyQuery)).map((s) => s.value).find(Number.isFinite) ?? null;
+    const before = (await readErrorRate().catch(() => null)) ?? snapshot.errorRate;
+
     const executedAt = deps.now();
     let detail: Record<string, unknown>;
     try {
@@ -302,12 +308,9 @@ export const confirmAction: ToolDefinition<typeof inputSchema, ConfirmData> = {
     }
 
     const verification = await verifyRecovery({
-      before: snapshot.errorRate,
+      before,
       threshold: service.thresholds.errorRate,
-      read: async () =>
-        (await deps.prometheus.instant(service.queries.errorRate))
-          .map((s) => s.value)
-          .find(Number.isFinite) ?? null,
+      read: readErrorRate,
       sleep: deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
       now: deps.now,
     });
