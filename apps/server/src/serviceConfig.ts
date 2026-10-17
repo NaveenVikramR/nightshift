@@ -121,17 +121,43 @@ const timeZone = z.string().refine((tz) => {
   }
 }, 'unknown IANA time zone');
 
-const scanAssetSchema = z.object({
-  name: z.string().min(1).max(64),
-  url: httpUrl,
-});
+/**
+ * What run_security_scan may touch. Nothing outside these lists is ever scanned
+ * (invariant 3): no discovery, no port scanning.
+ */
+const securitySchema = z
+  .object({
+    /** URLs whose response headers are checked (one GET each). */
+    headers: z
+      .array(z.object({ name: z.string().min(1).max(64), url: httpUrl }))
+      .max(50)
+      .default([]),
+    /** TLS endpoints whose certificate is checked (one handshake each). */
+    tls: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(64),
+          host: z.string().regex(/^[A-Za-z0-9.-]{1,253}$/, 'a hostname'),
+          port: z.number().int().min(1).max(65535).default(443),
+        }),
+      )
+      .max(50)
+      .default([]),
+    /** GitHub repos for Dependabot and secret-scanning alerts. */
+    repos: z
+      .array(z.string().regex(/^[\w.-]{1,100}\/[\w.-]{1,100}$/, 'must be owner/name'))
+      .max(20)
+      .default([]),
+    scanTimeoutMs: z.number().int().min(500).max(60_000).default(8000),
+  })
+  .default({ headers: [], tls: [], repos: [], scanTimeoutMs: 8000 });
 
 const serviceConfigSchema = z
   .object({
     prometheus: endpoint,
     alertmanager: endpoint,
     services: z.array(serviceSchema).min(1),
-    scanAssets: z.array(scanAssetSchema).default([]),
+    security: securitySchema,
     /** How times are spoken ("the 2:41 deploy"). */
     display: z.object({ timeZone: timeZone.default('UTC') }).default({ timeZone: 'UTC' }),
     github: z

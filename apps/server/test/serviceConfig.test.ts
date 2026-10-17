@@ -19,7 +19,8 @@ describe('service config', () => {
     const c = loadServiceConfig('config/nightshift.yaml', {});
     expect(c.services.map((s) => s.name)).toEqual(['payments-api', 'webhook-receiver']);
     expect(c.services[0]?.queries.breakers).toContain('circuit_breaker_state');
-    expect(c.scanAssets).toEqual([]);
+    expect(c.security.headers.map((h) => h.url)).toEqual(['http://127.0.0.1:18080']);
+    expect(c.security.tls).toEqual([]);
   });
 
   it('applies defaults and strips trailing slashes', () => {

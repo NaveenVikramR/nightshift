@@ -261,7 +261,8 @@ export const confirmAction: ToolDefinition<typeof inputSchema, ConfirmData> = {
     // Before/after use the same short-window query, so they are comparable.
     const verifyQuery = service.queries.verifyErrorRate ?? service.queries.errorRate;
     const readErrorRate = async () =>
-      (await deps.prometheus.instant(verifyQuery)).map((s) => s.value).find(Number.isFinite) ?? null;
+      (await deps.prometheus.instant(verifyQuery)).map((s) => s.value).find(Number.isFinite) ??
+      null;
     const before = (await readErrorRate().catch(() => null)) ?? snapshot.errorRate;
 
     const executedAt = deps.now();

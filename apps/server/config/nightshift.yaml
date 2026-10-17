@@ -87,5 +87,12 @@ executors:
 display:
   timeZone: Asia/Kolkata
 
-# Hosts that run_security_scan may check (TLS, headers). Nothing else is ever scanned.
-scanAssets: []
+# What run_security_scan may check. Nothing else is ever scanned (no discovery,
+# no port scanning). Prometheus security signals come from each service's
+# authFailures / webhookFailures queries above.
+security:
+  headers:
+    - { name: payments API, url: http://127.0.0.1:18080/ }
+  tls: [] # e.g. { name: payments API, host: pay.example.com, port: 443 } after the public deploy
+  repos: [] # e.g. owner/name: Dependabot + secret-scanning alerts (needs GITHUB_TOKEN)
+  scanTimeoutMs: 8000

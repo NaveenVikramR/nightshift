@@ -139,29 +139,45 @@ model IncidentEvent {
   @@map("incident_event")
 }
 
+/// One run_security_scan. Findings live in SecurityFinding (deduped across scans).
 model SecurityScan {
-  id         String    @id @default(uuid())
-  startedAt  DateTime  @default(now())
-  finishedAt DateTime?
-  score      Int? // 0-100
-  grade      String? // A-F
-  findings   Finding[]
+  id             String    @id @default(uuid())
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  startedBy      String    @default("")
+  score          Int? // 0-100
+  grade          String? // A-F
+  /// Per check: status (ok | findings | not_configured | not_available | timeout | error), count, note.
+  checks         Json?
+  /// Open findings per severity after this scan.
+  counts         Json?
+  /// { added, resolved: fingerprints, previousGrade, change }
+  deltas         Json?
+  previousScanId String?
 
   @@index([startedAt])
   @@map("security_scan")
 }
 
-model Finding {
-  id        String       @id @default(uuid())
-  scanId    String
-  scan      SecurityScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
-  check     String // tls_expiry | security_headers | dependabot | secret_scanning | ...
-  asset     String
-  severity  String // critical | high | medium | low | info
-  title     String
-  detail    Json?
-  createdAt DateTime     @default(now())
+/// A security problem, deduped across scans by fingerprint (check|target|key).
+/// Untrusted external text (advisories, package names, header values) is in
+/// `detail`, quoted; `title` is server-authored.
+model SecurityFinding {
+  id              String    @id @default(uuid())
+  fingerprint     String    @unique
+  check           String
+  target          String
+  key             String
+  severity        String // critical | high | medium | low
+  title           String
+  detail          Json?
+  status          String    @default("open") // open | resolved
+  firstSeenScanId String
+  lastSeenScanId  String
+  resolvedScanId  String?
+  firstSeenAt     DateTime  @default(now())
+  resolvedAt      DateTime?
 
-  @@index([scanId])
-  @@map("finding")
+  @@index([status, severity])
+  @@map("security_finding")
 }
