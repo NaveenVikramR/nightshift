@@ -8,7 +8,8 @@ import {
   type HealthSignals,
 } from '../domain/health/health.js';
 import { log } from '../lib/log.js';
-import { sanitizeLabel } from '../lib/untrusted.js';
+import { capitalize } from '../domain/spoken.js';
+import { sanitizeLabel, toSpokenWords } from '../lib/untrusted.js';
 import { lookupService, type Clarification } from './common.js';
 import type { ToolDefinition } from './types.js';
 
@@ -30,6 +31,8 @@ export interface ServiceHealthData {
   thresholds: { errorRate: number; latencyP95Seconds: number };
   reasons: HealthAssessment['reasons'];
   missing: HealthAssessment['missing'];
+  /** Provider currently receiving traffic (from the activeProvider query), when configured. */
+  activeProvider: string | null;
   checkedAt: string;
 }
 
@@ -64,6 +67,16 @@ export const getServiceHealth: ToolDefinition<
     const svc = found.service;
     const q = svc.queries;
 
+    // Optional context: never makes the check fail on its own.
+    const activeP = q.activeProvider
+      ? deps.prometheus
+          .instant(q.activeProvider)
+          .then((samples) => {
+            const on = samples.find((x) => x.value === 1);
+            return on ? sanitizeLabel(on.labels[svc.breakerLabel]) || null : null;
+          })
+          .catch(() => null)
+      : Promise.resolve(null);
     const settled = await Promise.allSettled([
       deps.prometheus.instant(q.errorRate),
       deps.prometheus.instant(q.latencyP95),
@@ -98,8 +111,14 @@ export const getServiceHealth: ToolDefinition<
     };
 
     const assessment = evaluateHealth(signals, svc.thresholds);
+    const activeProvider = await activeP;
+    const primary = svc.actions.failover_provider?.providers[0];
+    const routing =
+      activeProvider && primary && activeProvider !== primary
+        ? ` Routing to ${capitalize(toSpokenWords(activeProvider))}.`
+        : '';
     return {
-      speak: speakHealth(svc.displayName, signals, assessment),
+      speak: `${speakHealth(svc.displayName, signals, assessment)}${routing}`,
       data: {
         service: svc.name,
         displayName: svc.displayName,
@@ -108,6 +127,7 @@ export const getServiceHealth: ToolDefinition<
         thresholds: svc.thresholds,
         reasons: assessment.reasons,
         missing: assessment.missing,
+        activeProvider,
         checkedAt: deps.now().toISOString(),
       },
     };

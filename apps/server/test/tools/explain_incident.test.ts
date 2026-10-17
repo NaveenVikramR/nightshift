@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Narrator } from '../../src/domain/correlation/narrator.js';
+import { suggestedActionSchema } from '../../src/domain/actions/types.js';
 import { explainIncident, type ExplainData } from '../../src/tools/explain_incident.js';
 import type { ToolDefinition } from '../../src/tools/types.js';
 import { makeAlert } from '../fakes/fakeAlertmanager.js';
 import { BOB, expectSpeakable, fakeToolDeps, invoke } from '../fakes/toolDeps.js';
-import { applyScenario, INJECTION_COMMIT, type ScenarioName } from '../fixtures/scenarios.js';
+import {
+  applyScenario,
+  INJECTION_COMMIT,
+  SCENARIOS,
+  type ScenarioName,
+} from '../fixtures/scenarios.js';
 
 const tool = explainIncident as unknown as ToolDefinition;
 type Fakes = ReturnType<typeof fakeToolDeps>;
@@ -55,6 +61,21 @@ describe('explain_incident', () => {
     expect(r.isError).toBe(false);
     expect(r.speak).toBe(speak);
     expectSpeakable(r.speak);
+  });
+
+  it('every remediation it suggests is accepted as-is by prepare_action', async () => {
+    let checked = 0;
+    for (const name of SCENARIOS) {
+      const r = await explain(setup(name), {
+        service: name === 'webhook_spoofing' ? 'webhooks' : 'payments',
+      });
+      for (const a of r.data.causes?.flatMap((c) => c.suggestedActions) ?? []) {
+        if (a.action === 'investigate') continue;
+        expect(suggestedActionSchema.safeParse(a).success, JSON.stringify(a)).toBe(true);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(3); // failover x2 (outage, bad_deploy) + rollback
   });
 
   it('returns causes with evidence, series summaries and the incident id', async () => {

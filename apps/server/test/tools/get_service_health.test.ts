@@ -42,6 +42,34 @@ describe('get_service_health', () => {
     });
   });
 
+  it('shows which provider is active, and says so after a failover', async () => {
+    const f = payments();
+    f.prometheus.set('payments:activeProvider', [
+      { labels: { service: 'payments-api', provider: 'razorpay' }, value: 1 },
+    ]);
+    let r = await invoke(tool, f.deps, { service: 'payments' }, BOB);
+    expect(r.data).toMatchObject({ activeProvider: 'razorpay' });
+    expect(r.speak).not.toContain('Routing');
+
+    f.prometheus.set('payments:activeProvider', [
+      { labels: { service: 'payments-api', provider: 'stripe' }, value: 1 },
+    ]);
+    r = await invoke(tool, f.deps, { service: 'payments' }, BOB);
+    expect(r.data).toMatchObject({ activeProvider: 'stripe' });
+    expect(r.speak).toBe(
+      'Payments API is healthy: 0.4 percent errors, p95 180 milliseconds and 20 requests per second. Routing to Stripe.',
+    );
+    expectSpeakable(r.speak);
+  });
+
+  it('still answers when the active-provider query fails', async () => {
+    const f = payments();
+    f.prometheus.failing.set('payments:activeProvider', 'unreachable');
+    const r = await invoke(tool, f.deps, { service: 'payments' }, BOB);
+    expect(r.isError).toBe(false);
+    expect(r.data).toMatchObject({ activeProvider: null, status: 'healthy' });
+  });
+
   it('reports a provider outage as critical, severity first', async () => {
     const f = payments({ errorRate: 0.63, razorpay: 1 });
     const r = await invoke(tool, f.deps, { service: 'the payment api' }, BOB);
@@ -56,6 +84,7 @@ describe('get_service_health', () => {
     const f = payments();
     await invoke(tool, f.deps, { service: 'payments' }, BOB);
     expect(f.prometheus.queries.sort()).toEqual([
+      'payments:activeProvider',
       'payments:breakers',
       'payments:errorRate',
       'payments:latencyP95',
