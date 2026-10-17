@@ -7,8 +7,11 @@ import {
   DemoState,
   isProvider,
   isScenario,
+  isSecurityMode,
+  SECURITY_MODES,
   PROVIDERS,
   SCENARIOS,
+  type SecurityMode,
 } from './state.ts';
 
 const MAX_BODY_BYTES = 4096;
@@ -40,6 +43,30 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   return text ? (JSON.parse(text) as unknown) : {};
 }
 
+/**
+ * hardened: CSP (with frame-ancestors), nosniff, X-Frame-Options and HSTS.
+ * weak: none of those, and an X-Powered-By header that leaks the stack.
+ */
+export function applySecurityHeaders(res: ServerResponse, mode: SecurityMode): void {
+  for (const h of [
+    'content-security-policy',
+    'x-content-type-options',
+    'x-frame-options',
+    'strict-transport-security',
+    'x-powered-by',
+  ]) {
+    res.removeHeader(h);
+  }
+  if (mode === 'weak') {
+    res.setHeader('x-powered-by', 'Express/4.17.1');
+    return;
+  }
+  res.setHeader('content-security-policy', "default-src 'none'; frame-ancestors 'none'");
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('x-frame-options', 'DENY');
+  res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
+}
+
 export interface DemoServerOptions {
   state: DemoState;
   metrics: Metrics;
@@ -57,6 +84,8 @@ export interface DemoServerOptions {
  * POST /admin/route-provider       (admin) {"provider":"stripe"} failover target
  * POST /admin/rollback             (admin) {"version":"v1.4.1"} deploy another version
  * POST /admin/restart              (admin) ~5 s of unavailability, then normal
+ * POST /admin/security             (admin) {"mode":"weak"|"hardened"} response security headers
+ * GET  /                           tiny landing JSON (the security-headers scan target)
  */
 export function createDemoServer({ state, metrics, adminToken }: DemoServerOptions): Server {
   const adminDigest = digest(adminToken);
@@ -65,12 +94,14 @@ export function createDemoServer({ state, metrics, adminToken }: DemoServerOptio
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost');
       const path = url.pathname;
+      applySecurityHeaders(res, state.securityMode);
 
       if (req.method === 'GET' && path === '/metrics') {
         res.writeHead(200, { 'content-type': metrics.registry.contentType });
         res.end(await metrics.registry.metrics());
         return;
       }
+      if (req.method === 'GET' && path === '/') return send(res, 200, { service: 'payments demo' });
       if (req.method === 'GET' && path === '/healthz') {
         res.writeHead(200, { 'content-type': 'text/plain' });
         res.end('ok');
@@ -122,6 +153,16 @@ export function createDemoServer({ state, metrics, adminToken }: DemoServerOptio
         }
         state.rollbackTo(body.version);
         metrics.updateBreakers(state);
+        return send(res, 200, state.snapshot());
+      }
+
+      if (req.method === 'POST' && path === '/admin/security') {
+        const body = (await readJson(req)) as { mode?: unknown };
+        if (!isSecurityMode(body.mode)) {
+          return send(res, 400, { error: 'invalid_mode', modes: SECURITY_MODES });
+        }
+        state.securityMode = body.mode;
+        applySecurityHeaders(res, state.securityMode);
         return send(res, 200, state.snapshot());
       }
 

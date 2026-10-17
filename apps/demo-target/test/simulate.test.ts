@@ -78,6 +78,7 @@ describe('payments-api simulation', () => {
       downProviders: [],
       version: 'v1.4.1',
       restarting: false,
+      securityMode: 'hardened',
     });
   });
 });

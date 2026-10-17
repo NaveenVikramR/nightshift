@@ -78,6 +78,28 @@ describe('demo-target HTTP API', () => {
     expect((await admin('/admin/restart', {}, 'wrong')).status).toBe(401);
   });
 
+  it('switches security headers between hardened and weak; reset hardens', async () => {
+    let res = await fetch(`${base}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-powered-by')).toBeNull();
+
+    const weak = await admin('/admin/security', { body: JSON.stringify({ mode: 'weak' }) });
+    expect(await weak.json()).toMatchObject({ securityMode: 'weak' });
+    res = await fetch(`${base}/`);
+    expect(res.headers.get('content-security-policy')).toBeNull();
+    expect(res.headers.get('x-content-type-options')).toBeNull();
+    expect(res.headers.get('strict-transport-security')).toBeNull();
+    expect(res.headers.get('x-powered-by')).toBe('Express/4.17.1');
+
+    expect(
+      (await admin('/admin/security', { body: JSON.stringify({ mode: 'open' }) })).status,
+    ).toBe(400);
+    await admin('/admin/reset');
+    expect((await fetch(`${base}/`)).headers.get('x-frame-options')).toBe('DENY');
+  });
+
   it('rejects unknown scenarios and providers', async () => {
     expect((await admin('/admin/chaos/rm_rf')).status).toBe(404);
     const bad = await admin('/admin/route-provider', { body: JSON.stringify({ provider: 'x' }) });

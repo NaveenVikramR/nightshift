@@ -34,6 +34,8 @@
     "chaos:auth_bruteforce": "node infra/scripts/chaos.mjs auth_bruteforce",
     "chaos:webhook_spoofing": "node infra/scripts/chaos.mjs webhook_spoofing",
     "chaos:bad_deploy": "node infra/scripts/chaos.mjs bad_deploy",
+    "chaos:security_weak": "node infra/scripts/chaos.mjs security weak",
+    "chaos:security_harden": "node infra/scripts/chaos.mjs security hardened",
     "chaos:failover": "node infra/scripts/chaos.mjs route-provider stripe",
     "chaos:state": "node infra/scripts/chaos.mjs state",
     "chaos:reset": "node infra/scripts/chaos.mjs reset"

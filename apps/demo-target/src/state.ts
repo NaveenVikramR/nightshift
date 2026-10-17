@@ -18,6 +18,13 @@ export const BASELINE_VERSION = 'v1.4.1';
 export const BAD_VERSION = 'v1.4.2';
 export const VERSION_PATTERN = /^v?\d+(\.\d+){1,3}$/;
 
+export const SECURITY_MODES = ['hardened', 'weak'] as const;
+export type SecurityMode = (typeof SECURITY_MODES)[number];
+
+export function isSecurityMode(value: unknown): value is SecurityMode {
+  return typeof value === 'string' && (SECURITY_MODES as readonly string[]).includes(value);
+}
+
 /** restart: how long the service is unavailable while it comes back. */
 export const RESTART_MS = 5000;
 
@@ -41,6 +48,8 @@ export class DemoState {
   currentVersion: string = BASELINE_VERSION;
   /** restart: payments answers 503 and /readyz is not ready until then (epoch ms). */
   restartingUntil: number | null = null;
+  /** Which security headers every response carries (the posture demo). */
+  securityMode: SecurityMode = 'hardened';
 
   private readonly now: () => number;
 
@@ -84,6 +93,7 @@ export class DemoState {
     this.badDeployFailsAt = null;
     this.currentVersion = BASELINE_VERSION;
     this.restartingUntil = null;
+    this.securityMode = 'hardened';
   }
 
   routeTo(provider: Provider): void {
@@ -103,6 +113,7 @@ export class DemoState {
       downProviders: PROVIDERS.filter((p) => this.isProviderDown(p)),
       version: this.currentVersion,
       restarting: this.isRestarting(),
+      securityMode: this.securityMode,
       ...(this.badDeployFailsAt !== null && {
         badDeployFailsAt: new Date(this.badDeployFailsAt).toISOString(),
       }),

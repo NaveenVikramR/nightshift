@@ -2,6 +2,7 @@
 // Trigger demo-target failure scenarios.
 //   node infra/scripts/chaos.mjs <provider_outage|latency_spike|auth_bruteforce|webhook_spoofing>
 //   node infra/scripts/chaos.mjs bad_deploy [delaySeconds]
+//   node infra/scripts/chaos.mjs security <weak|hardened>
 //   node infra/scripts/chaos.mjs reset | state | route-provider <razorpay|stripe>
 // Reads DEMO_ADMIN_TOKEN and DEMO_TARGET_URL from infra/.env (or the environment).
 // bad_deploy and reset also read NIGHTSHIFT_URL and NIGHTSHIFT_INGEST_TOKEN: they
@@ -54,6 +55,11 @@ if (command === 'bad_deploy') {
 const request = {
   reset: { method: 'POST', path: '/admin/reset' },
   state: { method: 'GET', path: '/admin/state' },
+  security: {
+    method: 'POST',
+    path: '/admin/security',
+    body: JSON.stringify({ mode: arg }),
+  },
   'route-provider': {
     method: 'POST',
     path: '/admin/route-provider',
