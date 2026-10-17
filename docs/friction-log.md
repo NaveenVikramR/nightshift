@@ -190,3 +190,16 @@
 - **Time lost:** ~25 minutes (one failed 6-minute live run plus diagnosis)
 - **Workaround:** An optional per-service `verifyErrorRate` query with a short window (`rate[15s]`; scrape interval 5 s gives 3 samples), used for both the before and after readings so they are comparable. It falls back to the normal query when absent.
 - **Suggestion:** In the `rate()` docs, add a short note on how the range window delays detecting recovery (with the "window ≥ 4 × scrape interval" guidance next to it), since alerting and remediation tools commonly reuse dashboard queries.
+
+## FL-14: `node --test <directory>` runs the directory as a file in Node 24
+
+- **Date:** 2026-10-18
+- **Product / tool:** Node.js 24.16 test runner (`node --test`)
+- **Task attempted:** Run the small `node:test` suite for the chaos scripts from `npm test`.
+- **Steps taken:** Added `node --test infra/scripts` to the root `test` script.
+- **Expected:** All `*.test.mjs` files in the directory run (older docs and blog posts describe directory arguments being searched).
+- **Actual:** One failing "test" named after the directory (`✖ infra\scripts … 'test failed'`), with no hint that directories aren't supported. Newer Node versions take glob patterns instead.
+- **Severity:** Low
+- **Time lost:** ~5 minutes
+- **Workaround:** `node --test "infra/scripts/*.test.mjs"` (quoted so the shell doesn't expand it).
+- **Suggestion:** When a positional argument is a directory, print "directories are not supported; pass a glob such as dir/**/*.test.mjs" instead of reporting a failed test.

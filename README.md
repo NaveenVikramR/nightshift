@@ -4,11 +4,9 @@ Nightshift is a voice on-call and security copilot for small engineering teams: 
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
 take safe, explicitly confirmed actions.
 
-> Status: **Day 4.** Transport, auth, roles, database and audit log, plus nine tools:
-> `ping_nightshift`, `list_active_alerts`, `get_service_health`, `acknowledge_alert`,
-> `silence_alert`, `get_recent_deploys`, `explain_incident` (grounded incident diagnosis), and
-> two-phase remediation with `prepare_action` / `confirm_action` (fail over, roll back, restart).
-> Security posture lands next.
+> Status: **Day 5.** All 13 tools: ops brief, alerts, health, deploys, grounded incident diagnosis,
+> ack and silence, two-phase remediation (fail over, roll back, restart), security posture (scan +
+> findings), incident timeline with a postmortem draft, and notes. Public deployment is next.
 
 ## Prerequisites
 
@@ -193,6 +191,46 @@ Any service can become remediable by exposing these endpoints, protected by a be
 `rollback_deploy` can instead use a `github_workflow` executor, which triggers a `rollback.yml`
 workflow through `workflow_dispatch` with a `version` input. That needs a fine-grained token with
 Actions: write.
+
+## Security posture
+
+`run_security_scan` checks only what `nightshift.yaml` `security` allowlists. There's no
+discovery and no port scanning.
+
+| Check                        | What                                                                                                                                       | Finding severity                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `tls_expiry`                 | TLS handshake to each `security.tls` host:port                                                                                             | <30 days medium, <7 days high, expired/invalid critical |
+| `security_headers`           | One GET per `security.headers` URL: CSP, HSTS (https only), nosniff, X-Frame-Options or `frame-ancestors`, X-Powered-By / versioned Server | medium / low                                            |
+| `dependabot`                 | Open Dependabot alerts for `security.repos` (GitHub API)                                                                                   | from the advisory                                       |
+| `secret_scanning`            | Open secret-scanning alerts for `security.repos`                                                                                           | high                                                    |
+| `auth_failure_spike`         | 15-minute peak of each service's `authFailures` rate vs its threshold                                                                      | medium (high at 5x)                                     |
+| `webhook_signature_failures` | Same, for `webhookFailures`                                                                                                                | medium (high at 5x)                                     |
+
+- **Not a failure:** no token, or a 403 / 404 from GitHub (feature off, or no permission), counts as
+  _not configured / not available_, not a finding.
+- **Score:** 100 minus 40 / 20 / 8 / 3 per open critical / high / medium / low finding, giving
+  grade A–F.
+- **Dedupe:** findings are deduplicated across scans by a fingerprint (check + target + key).
+- **Resolution:** a finding is resolved only when its check completed and its target was actually
+  checked, so a timeout never looks like a fix.
+- **Rate limit:** one scan per minute.
+- **Untrusted text:** advisory text, package names, URLs and header values stay quoted untrusted
+  data and are never spoken.
+
+Try it: `npm run chaos:security_weak`, ask for a scan (the grade drops and four header findings
+appear), then `npm run chaos:security_harden` and scan again (the findings are resolved).
+
+## Ops brief, incident timeline and notes
+
+- **`get_ops_brief`:** one call covering every service's health, firing alerts, open incidents, the
+  latest security grade and the last 24 hours of deploys. Most urgent first, or _"All clear: …"_ in
+  one line.
+- **`get_incident_timeline`:** the incident as an ordered story: alerts fired, diagnosis, action
+  prepared / confirmed / executed, verification, notes, resolution. It includes a postmortem draft
+  (impact window, cause, actions taken, follow-ups) built only from those records.
+- **`add_incident_note`:** (responder) records a note, or resolves the incident with
+  `resolve: true`. Notes are stored as quoted untrusted text: never spoken, never treated as
+  instructions.
 
 ## Test
 

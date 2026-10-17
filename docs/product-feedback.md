@@ -89,6 +89,13 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **Would I build with it again?** Yes, but most teams will find CI-pushed deploy events (our
   `POST /events/deploy`) simpler and cheaper.
 
+- **Security APIs (Day 5):** `/dependabot/alerts` and `/secret-scanning/alerts` feed
+  `run_security_scan`. Following the docs, a 403 (feature off, or missing permission) or 404 (not
+  enabled) is treated as "not available", never as a finding. These are unit-tested with fakes
+  only; no repo is configured yet, so the permission behaviour hasn't been checked against a real
+  token. The docs spread the needed fine-grained permissions ("Dependabot alerts: read", "Secret
+  scanning alerts: read") and the 403-vs-404 meaning across several pages.
+
 ## Prometheus 3.15 (HTTP API: instant and range queries)
 
 - **What I used it for:**

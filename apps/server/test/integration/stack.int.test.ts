@@ -26,6 +26,10 @@ import { ExecutorRegistry } from '../../src/domain/actions/executors/registry.js
 import type { ActionExecutor } from '../../src/domain/actions/executors/types.js';
 import { confirmAction, type ConfirmData } from '../../src/tools/confirm_action.js';
 import { prepareAction, type PreparedData } from '../../src/tools/prepare_action.js';
+import { addIncidentNote, type NoteData } from '../../src/tools/add_incident_note.js';
+import { getIncidentTimeline, type TimelineData } from '../../src/tools/get_incident_timeline.js';
+import { getSecurityFindings, type FindingsData } from '../../src/tools/get_security_findings.js';
+import { runSecurityScan, type ScanData } from '../../src/tools/run_security_scan.js';
 import { createPostureScanner } from '../../src/domain/posture/index.js';
 import { InMemoryPendingActionStore } from '../fakes/fakeActions.js';
 import { InMemorySecurityStore } from '../fakes/fakeSecurity.js';
@@ -374,5 +378,165 @@ describe('remediation (two-phase) against the stack', () => {
     expect(again.speak).toBe("That's already done.");
     expect(again.data.replayed).toBe(true);
     expect(executions.length).toBe(before + 1); // never re-executed
+  });
+});
+
+describe('security posture and incident story against the stack', () => {
+  const security = (mode: 'weak' | 'hardened') =>
+    fetch(`${DEMO}/admin/security`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    }).then((r) => {
+      if (!r.ok) throw new Error(`security ${mode} -> ${r.status}`);
+    });
+  const scan = async (step: string) => {
+    clockOffsetMs += 61_000; // the scan rate limit is 1 per minute: move the clock, don't sleep
+    const r = await invoke<ScanData>(runSecurityScan as unknown as ToolDefinition, deps, {}, BOB);
+    expect(r.isError, r.speak).toBe(false);
+    spoke(step, r.speak);
+    return r;
+  };
+
+  it('weak headers drop the grade and add findings; hardening resolves them', async () => {
+    await security('hardened');
+    const before = await scan('posture baseline run_security_scan');
+    expect(before.data.grade).toBe('A');
+
+    await security('weak');
+    const weak = await scan('posture weak run_security_scan');
+    expect(weak.data.grade).not.toBe('A');
+    expect(weak.data.change).toBe('down');
+    expect(weak.data.added.map((f) => f.check)).toEqual(Array(4).fill('security_headers'));
+    expect(weak.data.added.map((f) => f.title)).toContain(
+      'missing content security policy on payments API',
+    );
+
+    const findings = await invoke<FindingsData>(
+      getSecurityFindings as unknown as ToolDefinition,
+      deps,
+      {},
+      BOB,
+    );
+    spoke('posture weak get_security_findings', findings.speak);
+    expect(findings.data.findings).toHaveLength(4);
+
+    await security('hardened');
+    const fixed = await scan('posture hardened run_security_scan');
+    expect(fixed.data.grade).toBe('A');
+    expect(fixed.data.change).toBe('up');
+    expect(fixed.data.resolved).toHaveLength(4);
+    expect(fixed.data.open).toEqual([]);
+  });
+
+  it('provider_outage → explain → failover → resolve with a note → the timeline tells it in order', async () => {
+    // Isolate from incidents opened by earlier tests in this file.
+    for (const i of await deps.incidents.listOpen()) await deps.incidents.resolve(i.id, new Date());
+    clockOffsetMs = 0; // no more scans: real time again, so the story's times are real
+    await chaos('/admin/reset');
+    // An earlier outage's alert must be gone first, or the new outage reuses it (old startsAt).
+    const payments = catalog.services.find((s) => s.name === 'payments-api')!;
+    const quietNow = async () => {
+      const breakerAlert = (await deps.alertmanager.listAlerts()).some(
+        (a) => a.labels['alertname'] === 'CircuitBreakerOpen' && a.state === 'active',
+      );
+      const err = (await deps.prometheus.instant(payments.queries.errorRate))[0]?.value ?? NaN;
+      return !breakerAlert && err < payments.thresholds.errorRate;
+    };
+    // Quiet for a full minute, so the new outage is a separate onset (not merged
+    // with the previous incident's spike at 30 s resolution).
+    await waitFor(
+      'a quiet minute',
+      async () => {
+        if (!(await quietNow())) return undefined;
+        await new Promise((r) => setTimeout(r, 60_000));
+        return (await quietNow()) ? true : undefined;
+      },
+      240_000,
+    );
+    await waitFor(
+      'a quiet system',
+      async () => {
+        const breakerAlert = (await deps.alertmanager.listAlerts()).some(
+          (a) => a.labels['alertname'] === 'CircuitBreakerOpen' && a.state === 'active',
+        );
+        const err = (await deps.prometheus.instant(payments.queries.errorRate))[0]?.value ?? NaN;
+        return !breakerAlert && err < payments.thresholds.errorRate ? true : undefined;
+      },
+      180_000,
+    );
+    const started = new Date();
+    await chaos('/admin/chaos/provider_outage');
+    await waitFor('breaker open alert', async () =>
+      (await deps.alertmanager.listAlerts()).some(
+        (a) => a.labels['alertname'] === 'CircuitBreakerOpen' && a.startsAt >= started,
+      )
+        ? true
+        : undefined,
+    );
+
+    const explained = await invoke<ExplainData>(
+      explainIncident as unknown as ToolDefinition,
+      deps,
+      { service: 'payments' },
+      ALICE,
+    );
+    spoke('story explain_incident', explained.speak);
+    const failover = explained.data.causes
+      .flatMap((c) => c.suggestedActions)
+      .find((a) => a.action === 'failover_provider');
+    const prepared = await invoke<PreparedData>(
+      prepareAction as unknown as ToolDefinition,
+      deps,
+      { suggested_action: failover },
+      ALICE,
+    );
+    expect(prepared.isError, prepared.speak).toBe(false);
+    const done = await invoke<ConfirmData>(
+      confirmAction as unknown as ToolDefinition,
+      deps,
+      { confirmation_id: prepared.data.confirmationId },
+      ALICE,
+    );
+    expect(done.isError, done.speak).toBe(false);
+
+    const resolved = await invoke<NoteData>(
+      addIncidentNote as unknown as ToolDefinition,
+      deps,
+      { note: 'Razorpay outage confirmed; running on Stripe', resolve: true },
+      ALICE,
+    );
+    spoke('story add_incident_note', resolved.speak);
+    expect(resolved.data).toMatchObject({ resolved: true });
+
+    const story = await invoke<TimelineData>(
+      getIncidentTimeline as unknown as ToolDefinition,
+      deps,
+      { incident_id: explained.data.incidentId },
+      BOB,
+    );
+    spoke('story get_incident_timeline', story.speak);
+    const kinds = story.data.timeline.map((e) => e.kind);
+    for (const k of [
+      'alert',
+      'diagnosis',
+      'prepared',
+      'confirmed',
+      'executed',
+      'verified',
+      'resolved',
+    ] as const) {
+      expect(kinds, k).toContain(k);
+    }
+    const order = ['diagnosis', 'prepared', 'confirmed', 'executed', 'verified', 'resolved'].map(
+      (k) => kinds.indexOf(k as (typeof kinds)[number]),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(story.data.postmortem.cause?.id).toBe('provider_failure');
+    expect(story.data.postmortem.followUps).toContain('Fail back to razorpay once it is healthy.');
+    expect(story.speak).toMatch(
+      /^Critical incident on payments API, resolved after \d+ minutes?\. Cause: Razorpay failing\. Failed over to Stripe at /,
+    );
+    await chaos('/admin/reset');
   });
 });

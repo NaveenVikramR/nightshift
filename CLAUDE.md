@@ -81,6 +81,7 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 - `npm run dev` — start server with tsx watch on `http://127.0.0.1:3000/mcp` (needs `DATABASE_URL`)
 - `npm run build && npm start` — compile with tsc and run `dist/index.js`
 - `npm test` — Vitest in every workspace (no network, no DB; fakes for Prometheus/Alertmanager/stores)
+  plus `node --test "infra/scripts/*.test.mjs"` (chaos deploy-event helpers)
 - `npm run test:integration` — live-stack test (needs `npm run stack:up` + `infra/.env`); not in `npm test`
 - `npm run stack:up` / `stack:down` / `stack:logs` — docker compose stack in `infra/`: demo-target
   (host port 18080), Prometheus (9090), Alertmanager (9093), all on 127.0.0.1. Needs Docker + `infra/.env`
@@ -89,7 +90,9 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
   down); `test:integration` runs the same probes first and stops with one line if the stack is down
 - `npm run chaos:provider_outage` | `chaos:latency_spike` | `chaos:auth_bruteforce` |
   `chaos:webhook_spoofing` — inject failures into demo-target; `chaos:failover` (route to stripe),
-  `chaos:state`, `chaos:reset`
+  `chaos:state`, `chaos:reset` (also reports the restored v1.4.1 to the deploy history)
+- `npm run chaos:security_weak` / `chaos:security_harden` — demo-target drops / restores its security
+  headers (CSP, nosniff, X-Frame-Options, HSTS; weak also leaks X-Powered-By)
 - `npm run chaos:bad_deploy [-- <delaySeconds>]` — acts as CI: POSTs deploy v1.4.2 to Nightshift
   (`NIGHTSHIFT_URL` + `NIGHTSHIFT_INGEST_TOKEN` in `infra/.env`), then razorpay fails after 60 s
 - `npm run typecheck` / `npm run lint` / `npm run format` — tsc, ESLint, Prettier
@@ -123,10 +126,22 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 environment }`, `display.timeZone` (spoken clock times), `github.apiUrl`, `executors`
   (`admin_api` {url, tokenEnv} | `github_workflow` {repo, workflow, ref, tokenEnv}; secrets by env
   var name only), per-service `actions` (which of the 3 remediations, which executor, failover
-  `providers`), optional `activeProvider` query, and the `scanAssets` allowlist. New apps plug in here only; no app-specific code.
+  `providers`), optional `activeProvider` / `verifyErrorRate` queries, and the `security` allowlist (`headers`
+  URLs, `tls` host:port, GitHub `repos`, `scanTimeoutMs`): nothing else is ever scanned. New apps plug in here only; no app-specific code.
 - Commit messages are untrusted too: stored via `quoteUntrusted(…, { multiline })`, never read by
   a rule, never spoken by `explain_incident`; only `get_recent_deploys` may speak a first line that
   passes `speakableCommitLine` (≤ 8 words, safe chars, not instruction-like).
+- Posture (`src/domain/posture/`): checks behind interfaces (`checks/`: TLS, headers, GitHub
+  Dependabot + secret scanning, Prometheus auth/webhook spikes), each returns a status (ok |
+  findings | not_configured | not_available | timeout | error) and the targets it checked; no
+  token / 403 / 404 is never a finding. `scan.ts` reconciles by fingerprint (check|target|key) and
+  only resolves findings whose check completed AND target was checked; `score.ts` 100 − 40/20/8/3
+  per open critical/high/medium/low → A–F. External text is quoted untrusted in `detail`.
+  `run_security_scan`: 1 per minute per team (process lock).
+- Incidents (`src/domain/incidents/timeline.ts`): timeline + deterministic postmortem draft from
+  recorded events only; notes are quoted untrusted (`data.note`), never spoken.
+- Confirmations bind actor + paramsHash + expiry + single use; `STRICT_SESSION_BINDING=true` also
+  requires the preparing MCP session (off by default: voice clients reconnect between turns).
 - Remediation (`src/domain/actions/`): `types.ts` (the 3 allowlisted actions + zod params shared
   with `explain_incident` suggestions), `plan.ts` (pure preconditions + blast radius, run at
   prepare AND again at confirm), `snapshot.ts` (executor state + metrics + deploys),
@@ -145,7 +160,7 @@ environment }`, `display.timeZone` (spoken clock times), `github.apiUrl`, `execu
 
 | Tool                    | Kind                                      | Role needed | Status   |
 | ----------------------- | ----------------------------------------- | ----------- | -------- |
-| `get_ops_brief`         | read                                      | viewer      |          |
+| `get_ops_brief`         | read                                      | viewer      | ✅ Day 5 |
 | `list_active_alerts`    | read                                      | viewer      | ✅ Day 2 |
 | `explain_incident`      | read (core)                               | viewer      | ✅ Day 3 |
 | `get_service_health`    | read                                      | viewer      | ✅ Day 2 |
@@ -154,10 +169,10 @@ environment }`, `display.timeZone` (spoken clock times), `github.apiUrl`, `execu
 | `silence_alert`         | write (max 4h)                            | responder   | ✅ Day 2 |
 | `prepare_action`        | no side effect, returns `confirmation_id` | responder   | ✅ Day 4 |
 | `confirm_action`        | write (executes)                          | responder   | ✅ Day 4 |
-| `run_security_scan`     | read external, writes findings            | viewer      |          |
-| `get_security_findings` | read                                      | viewer      |          |
-| `get_incident_timeline` | read                                      | viewer      |          |
-| `add_incident_note`     | write (low)                               | responder   |          |
+| `run_security_scan`     | read external, writes findings            | viewer      | ✅ Day 5 |
+| `get_security_findings` | read                                      | viewer      | ✅ Day 5 |
+| `get_incident_timeline` | read                                      | viewer      | ✅ Day 5 |
+| `add_incident_note`     | write (low)                               | responder   | ✅ Day 5 |
 
 Plus one diagnostic tool (not counted in the 13): `ping_nightshift` (read, viewer; ✅ Day 1)
 reports server version and the caller's role.
