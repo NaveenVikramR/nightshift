@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { acknowledgeAlert } from '../tools/acknowledge_alert.js';
 import { confirmAction } from '../tools/confirm_action.js';
 import { explainIncident } from '../tools/explain_incident.js';
+import { getOpsBrief } from '../tools/get_ops_brief.js';
 import { getRecentDeploys } from '../tools/get_recent_deploys.js';
 import { getSecurityFindings } from '../tools/get_security_findings.js';
 import { getServiceHealth } from '../tools/get_service_health.js';
@@ -27,6 +28,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   confirmAction,
   runSecurityScan,
   getSecurityFindings,
+  getOpsBrief,
 ] as unknown as readonly ToolDefinition[];
 
 export function registerTools(
