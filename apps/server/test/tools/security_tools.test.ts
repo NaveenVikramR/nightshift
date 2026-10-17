@@ -11,6 +11,9 @@ const scanTool = runSecurityScan as unknown as ToolDefinition;
 const findingsTool = getSecurityFindings as unknown as ToolDefinition;
 type Fakes = ReturnType<typeof fakeToolDeps>;
 
+/** The setup has one check that runs (headers) and one that isn't configured (Dependabot). */
+const NOTE = " One of two checks didn't run.";
+
 const header = (key: string, severity: RawFinding['severity'], title: string): RawFinding => ({
   check: 'security_headers',
   target: 'payments API',
@@ -25,6 +28,8 @@ const WEAK = [
   header('x-frame-options', 'medium', 'no clickjacking protection on payments API'),
   header('x-powered-by', 'low', 'X-Powered-By header leaks the stack on payments API'),
 ];
+const WEAK_TITLES =
+  'missing content security policy on payments API, no clickjacking protection on payments API, and two more.';
 
 function setup() {
   const f = fakeToolDeps();
@@ -42,14 +47,12 @@ const later = (f: Fakes, seconds = 61) =>
 const scan = (f: Fakes) => invoke<ScanData>(scanTool, f.deps, {}, BOB);
 
 describe('run_security_scan', () => {
-  it('first scan: grade and the open issues, worst first', async () => {
+  it('first scan: grade, the open issues worst first, and how many checks did not run', async () => {
     const { f, headers } = setup();
     weak(headers);
     const r = await scan(f);
     expect(r.isError).toBe(false);
-    expect(r.speak).toBe(
-      'Security grade C. Four open issues: missing content security policy on payments API, no clickjacking protection on payments API, and two more.',
-    );
+    expect(r.speak).toBe(`Security grade C. Four open issues: ${WEAK_TITLES}${NOTE}`);
     expectSpeakable(r.speak);
     expect(r.data).toMatchObject({
       grade: 'C',
@@ -73,26 +76,38 @@ describe('run_security_scan', () => {
   it('grade drops when new issues appear, and recovers when they are fixed', async () => {
     const { f, headers } = setup();
     hardened(headers);
-    expect((await scan(f)).speak).toBe('Security grade A. No open issues.');
+    expect((await scan(f)).speak).toBe(`Security grade A. No open issues.${NOTE}`);
 
     weak(headers);
     later(f);
     const down = await scan(f);
+    // With the coverage note, two titles would exceed 30 words: one title, then a count.
     expect(down.speak).toBe(
-      'Security grade C, down from A. Four new issues: missing content security policy on payments API, no clickjacking protection on payments API, and two more.',
+      `Security grade C, down from A. Four new issues: missing content security policy on payments API, and three more.${NOTE}`,
     );
+    expectSpeakable(down.speak);
     expect(down.data.added).toHaveLength(4);
 
     hardened(headers);
     later(f);
     const up = await scan(f);
-    expect(up.speak).toBe('Security grade A, up from C. Four issues resolved. No open issues.');
+    expect(up.speak).toBe(
+      `Security grade A, up from C. Four issues resolved. No open issues.${NOTE}`,
+    );
     expect(up.data.resolved.map((x) => x.title)).toContain(
       'missing content security policy on payments API',
     );
 
     later(f);
-    expect((await scan(f)).speak).toBe('Security grade A, unchanged. No open issues.');
+    expect((await scan(f)).speak).toBe(`Security grade A, unchanged. No open issues.${NOTE}`);
+  });
+
+  it('says nothing about coverage when every check ran', async () => {
+    const { f, headers } = setup();
+    f.checks.splice(1); // only the headers check, which runs
+    weak(headers);
+    const r = await scan(f);
+    expect(r.speak).toBe(`Security grade C. Four open issues: ${WEAK_TITLES}`);
   });
 
   it('repeat scans dedupe: the same problem is one finding', async () => {
@@ -101,7 +116,9 @@ describe('run_security_scan', () => {
     await scan(f);
     later(f);
     const again = await scan(f);
-    expect(again.speak).toBe('Security grade C, unchanged. No new issues; four issues still open.');
+    expect(again.speak).toBe(
+      `Security grade C, unchanged. No new issues; four issues still open.${NOTE}`,
+    );
     expect(f.security.findings.size).toBe(4);
   });
 
@@ -114,6 +131,7 @@ describe('run_security_scan', () => {
     const r = await scan(f);
     expect(r.data.resolved).toEqual([]);
     expect(r.data.grade).toBe('C');
+    expect(r.speak).toMatch(/Two of two checks didn't run\.$/);
   });
 
   it('allows one scan per minute per team', async () => {
@@ -152,7 +170,7 @@ describe('run_security_scan', () => {
     );
     const r = await scan(f);
     expect(r.speak).toBe(
-      'Security grade B. One open issue: exposed secret alert in acme payments.',
+      "Security grade B. One open issue: exposed secret alert in acme payments. One of three checks didn't run.",
     );
     expect(r.speak).not.toMatch(/ignore|confirm/i);
     expect(JSON.stringify(r.data)).toContain('"untrusted":true');
@@ -169,13 +187,13 @@ describe('get_security_findings', () => {
     expect(r.speak).toBe("I haven't run a security scan yet. Ask me to run one.");
   });
 
-  it('reads the latest scan without rescanning: grade, counts, worst', async () => {
+  it('reads the latest scan without rescanning: grade, counts, worst, coverage', async () => {
     const { f, headers } = setup();
     weak(headers);
     await scan(f);
     const r = await findings(f);
     expect(r.speak).toBe(
-      'Security grade C: two medium and two low. Worst: missing content security policy on payments API.',
+      `Security grade C: two medium and two low. Worst: missing content security policy on payments API.${NOTE}`,
     );
     expectSpeakable(r.speak);
     expect(headers.runs).toBe(1);
@@ -187,10 +205,10 @@ describe('get_security_findings', () => {
     weak(headers);
     await scan(f);
     expect((await findings(f, { severity: 'medium' })).speak).toBe(
-      'Security grade C: two medium. Worst: missing content security policy on payments API.',
+      `Security grade C: two medium. Worst: missing content security policy on payments API.${NOTE}`,
     );
     expect((await findings(f, { severity: 'high' })).speak).toBe(
-      'Security grade C. No open issues at high severity or above.',
+      `Security grade C. No open issues at high severity or above.${NOTE}`,
     );
     const bad = await findings(f, { severity: 'urgent' });
     expect(bad.data).toMatchObject({ error: 'invalid_input' });

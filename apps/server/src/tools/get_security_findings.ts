@@ -66,7 +66,7 @@ export const getSecurityFindings: ToolDefinition<typeof inputSchema, FindingsDat
       (f) => !min || SEVERITY_RANK[f.severity] <= SEVERITY_RANK[min],
     );
     return {
-      speak: speakFindings(latest.grade, countBySeverity(open), open[0], min),
+      speak: speakFindings(latest.grade, countBySeverity(open), open[0], latest.checks, min),
       data: {
         scanned: true,
         grade: latest.grade,
