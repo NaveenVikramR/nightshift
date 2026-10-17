@@ -24,7 +24,7 @@ function healthy(f: Fakes) {
 
 async function scanned(
   f: Fakes,
-  grade: 'A' | 'C',
+  grade: 'A' | 'B' | 'C' | 'D',
   counts = { critical: 0, high: 0, medium: 0, low: 0 },
 ) {
   await f.security.saveScan({
@@ -91,11 +91,56 @@ describe('get_ops_brief', () => {
     await scanned(f, 'C', { critical: 0, high: 0, medium: 2, low: 2 });
     const r = await brief(f);
     expect(r.speak).toBe(
-      'Critical: payments API has errors at 45 percent and razorpay breaker open. Two alerts firing. One open incident on payments API. Security grade C.',
+      'Critical: payments API has errors at 45 percent and razorpay breaker open. Two alerts firing. One open incident on payments API. Security grade C, worth a look.',
     );
     expectSpeakable(r.speak);
     expect(r.data.services[0]).toMatchObject({ service: 'payments-api', status: 'critical' });
     expect(r.data.alerts).toMatchObject({ ok: true, value: { firing: 2 } });
+  });
+
+  it.each(['A', 'B'] as const)('grade %s still counts as all clear', async (grade) => {
+    const f = fakeToolDeps();
+    healthy(f);
+    await scanned(f, grade);
+    expect((await brief(f)).speak).toBe(
+      `All clear: payments API and webhook receiver are healthy, no alerts, security grade ${grade}, no deploys today.`,
+    );
+  });
+
+  it('grade C is not all clear: mentioned as worth a look, after the good news', async () => {
+    const f = fakeToolDeps();
+    healthy(f);
+    await scanned(f, 'C', { critical: 0, high: 0, medium: 2, low: 2 });
+    const r = await brief(f);
+    expect(r.speak).toBe(
+      'Payments API and webhook receiver are healthy, no alerts. Security grade C, worth a look.',
+    );
+    expectSpeakable(r.speak);
+  });
+
+  it('grade D leads the brief as a problem', async () => {
+    const f = fakeToolDeps();
+    healthy(f);
+    await scanned(f, 'D', { critical: 0, high: 2, medium: 0, low: 0 });
+    expect((await brief(f)).speak).toBe('Security grade D: two high issues.');
+  });
+
+  it('with a critical service, a D grade comes right after the outage and alerts', async () => {
+    const f = fakeToolDeps();
+    healthy(f);
+    f.prometheus.set('payments:errorRate', 0.45);
+    f.alertmanager.alerts.push(makeAlert({ alertname: 'HighErrorRate' }));
+    await f.incidents.open({
+      title: 't',
+      severity: 'critical',
+      service: 'payments-api',
+      primaryCause: null,
+    });
+    await scanned(f, 'D', { critical: 1, high: 0, medium: 0, low: 0 });
+    const r = await brief(f);
+    expect(r.speak).toBe(
+      'Critical: payments API has errors at 45 percent. One alert firing. Security grade D: one critical issue. One open incident on payments API.',
+    );
   });
 
   it('without a critical service, leads with the worst alert', async () => {

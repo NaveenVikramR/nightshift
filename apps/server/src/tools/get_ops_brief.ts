@@ -57,6 +57,22 @@ export interface OpsBriefData {
   generatedAt: string;
 }
 
+/** "Security grade D: two high issues." (critical and high counted, else all open issues). */
+function securityProblem(sec: { grade: string; counts: Record<string, number> }): string {
+  const critical = sec.counts['critical'] ?? 0;
+  const high = sec.counts['high'] ?? 0;
+  const parts = [
+    critical > 0 ? `${spokenCount(critical)} critical` : null,
+    high > 0 ? `${spokenCount(high)} high` : null,
+  ].filter((p): p is string => p !== null);
+  const total = Object.values(sec.counts).reduce((a, b) => a + b, 0);
+  const what =
+    parts.length > 0
+      ? `${spokenList(parts)} issue${critical + high === 1 ? '' : 's'}`
+      : `${spokenCount(total)} open issue${total === 1 ? '' : 's'}`;
+  return `Security grade ${sec.grade}: ${what}.`;
+}
+
 /** Fragments in urgency order; the most urgent is always spoken, the rest while they fit. */
 function speakBrief(
   services: { svc: ServiceDef; h: HealthCheck | null }[],
@@ -70,8 +86,10 @@ function speakBrief(
   const degraded = services.filter((s) => s.h?.assessment.status === 'degraded');
   const unknown = services.filter((s) => !s.h);
   const worstAlert = firing ? sortAlerts(firing)[0] : undefined;
+  // A-B: fine. C: worth a look (low priority). D-F or any critical finding: a problem that leads.
   const securityBad =
-    security && (['D', 'F'].includes(security.grade) || (security.counts['critical'] ?? 0) > 0);
+    !!security && (['D', 'F'].includes(security.grade) || (security.counts['critical'] ?? 0) > 0);
+  const securityMeh = !!security && !securityBad && security.grade === 'C';
 
   const allClear =
     critical.length === 0 &&
@@ -80,7 +98,7 @@ function speakBrief(
     firing?.length === 0 &&
     incidents?.length === 0 &&
     !securityBad;
-  if (allClear) {
+  if (allClear && !securityMeh) {
     const names = spokenList(services.map((s) => s.svc.displayName));
     const sec = security ? `security grade ${security.grade}` : 'no security scan yet';
     const dep =
@@ -94,6 +112,12 @@ function speakBrief(
   }
 
   const fragments: string[] = [];
+  if (allClear && securityMeh) {
+    const names = spokenList(services.map((s) => s.svc.displayName));
+    fragments.push(
+      `${capitalize(names)} ${services.length === 1 ? 'is' : 'are'} healthy, no alerts.`,
+    );
+  }
   for (const { svc, h } of critical) {
     fragments.push(
       `Critical: ${svc.displayName} has ${spokenList(h!.assessment.reasons.slice(0, 2).map((r) => r.spoken))}.`,
@@ -108,6 +132,7 @@ function speakBrief(
       `${capitalize(spokenCount(firing.length))} alert${firing.length === 1 ? '' : 's'} firing.`,
     );
   }
+  if (securityBad) fragments.push(securityProblem(security!));
   if (incidents && incidents.length > 0) {
     const where = incidents[0]!.service
       ? ` on ${servicesByName.get(incidents[0]!.service)?.displayName ?? 'a service'}`
@@ -126,7 +151,8 @@ function speakBrief(
   if (unknown.length > 0)
     fragments.push(`I couldn't check ${spokenList(unknown.map((s) => s.svc.displayName))}.`);
   if (firing === null) fragments.push("I couldn't check alerts.");
-  if (security) fragments.push(`Security grade ${security.grade}.`);
+  if (securityMeh) fragments.push(`Security grade ${security!.grade}, worth a look.`);
+  else if (security && !securityBad) fragments.push(`Security grade ${security.grade}.`);
   if (deploys !== null && deploys > 0)
     fragments.push(`${capitalize(spokenCount(deploys))} deploy${deploys === 1 ? '' : 's'} today.`);
 

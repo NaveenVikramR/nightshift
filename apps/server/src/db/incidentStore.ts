@@ -14,7 +14,16 @@ export interface IncidentRecord {
 }
 
 export type IncidentEventKind =
-  'diagnosis' | 'alert' | 'ack' | 'silence' | 'note' | 'action' | 'deploy' | 'resolved';
+  | 'diagnosis'
+  | 'alert'
+  | 'ack'
+  | 'silence'
+  | 'note'
+  | 'action'
+  | 'deploy'
+  | 'resolved'
+  /** Provider routing changed outside Nightshift (detected, not performed). */
+  | 'routing';
 
 export interface IncidentEventInput {
   kind: IncidentEventKind;

@@ -20,7 +20,8 @@ export type TimelineKind =
   | 'refused'
   | 'verified'
   | 'note'
-  | 'resolved';
+  | 'resolved'
+  | 'routing';
 
 export interface TimelineEntry {
   at: string;
@@ -109,6 +110,14 @@ export function buildTimeline(
         text: e.message,
         ...(d.note && { note: d.note }),
       });
+    } else if (e.kind === 'routing') {
+      entries.push({
+        at,
+        kind: 'routing',
+        actor: e.actor,
+        text: e.message,
+        data: (e.data ?? {}) as Record<string, unknown>,
+      });
     }
   }
   // Stable sort by time (same-time entries keep their recorded order).
@@ -167,9 +176,21 @@ export function draftPostmortem(
   const followUps: string[] = [];
   for (const a of actionsTaken) {
     if (a.result === 'failed') followUps.push(`Find out why ${a.action.action} failed.`);
-    else if (a.action.action === 'failover_provider')
-      followUps.push(`Fail back to ${a.action.from} once it is healthy.`);
-    else if (a.action.action === 'rollback_deploy')
+    else if (a.action.action === 'failover_provider') {
+      const from = a.action.from;
+      // A recorded routing change back to the original provider (made outside Nightshift).
+      const failedBack = timeline.some(
+        (t) =>
+          t.kind === 'routing' &&
+          Date.parse(t.at) >= Date.parse(a.at) &&
+          t.data?.['activeProvider'] === from,
+      );
+      followUps.push(
+        failedBack
+          ? `Done: routing is back on ${from} (changed outside Nightshift).`
+          : `Fail back to ${from} once it is healthy.`,
+      );
+    } else if (a.action.action === 'rollback_deploy')
       followUps.push(`Fix ${a.action.fromVersion} before redeploying it.`);
     else followUps.push(`Find out why ${a.action.service} needed a restart.`);
     if (a.verification === 'no_improvement')

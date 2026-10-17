@@ -116,6 +116,35 @@ describe('get_incident_timeline', () => {
     ]);
   });
 
+  it('a fail-back done outside Nightshift is recorded once and closes that follow-up', async () => {
+    const f = await fullIncident();
+    // Routing is back on razorpay (e.g. someone used the admin API directly).
+    f.prometheus.set('payments:activeProvider', [{ labels: { provider: 'razorpay' }, value: 1 }]);
+    at(f, 10);
+    const first = await timeline(f);
+    const again = await timeline(f);
+
+    const routing = f.incidents.eventLog.filter((e) => e.kind === 'routing');
+    expect(routing).toHaveLength(1); // not recorded twice
+    expect(routing[0]).toMatchObject({
+      actor: null,
+      message: 'provider routing changed outside Nightshift',
+      data: { activeProvider: 'razorpay', previouslyRoutedTo: 'stripe' },
+    });
+    expect(first.data.timeline.at(-1)).toMatchObject({ kind: 'routing' });
+    expect(again.data.postmortem.followUps).toEqual([
+      'Done: routing is back on razorpay (changed outside Nightshift).',
+    ]);
+  });
+
+  it('records nothing while traffic is still on the failover provider', async () => {
+    const f = await fullIncident();
+    f.prometheus.set('payments:activeProvider', [{ labels: { provider: 'stripe' }, value: 1 }]);
+    const r = await timeline(f);
+    expect(f.incidents.eventLog.some((e) => e.kind === 'routing')).toBe(false);
+    expect(r.data.postmortem.followUps).toEqual(['Fail back to razorpay once it is healthy.']);
+  });
+
   it('the postmortem uses only recorded facts (every time in it comes from the records)', async () => {
     const f = await fullIncident();
     const r = await timeline(f);
