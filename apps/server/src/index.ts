@@ -5,6 +5,8 @@ import { ConfigError, loadConfig } from './config.js';
 import { PrismaAckStore, PrismaSilenceStore } from './db/alertStores.js';
 import { PrismaDeployStore } from './db/deployStore.js';
 import { PrismaIncidentStore } from './db/incidentStore.js';
+import { PrismaPendingActionStore } from './db/pendingActionStore.js';
+import { ExecutorRegistry } from './domain/actions/executors/registry.js';
 import { createPrismaClient } from './db/prisma.js';
 import { PrismaAuditLog } from './db/prismaAuditLog.js';
 import { createApp } from './http/createApp.js';
@@ -43,6 +45,12 @@ async function main(): Promise<void> {
       services: githubServices.map((s) => s.name),
     });
   }
+  const missing = ExecutorRegistry.missingTokens(catalog, process.env);
+  if (missing.length > 0) {
+    log.warn('executor token env vars are not set: those actions will be refused', {
+      executors: missing,
+    });
+  }
   const deployStore = new PrismaDeployStore(db);
   const nightshift = createApp({
     config,
@@ -66,6 +74,8 @@ async function main(): Promise<void> {
         ),
       }),
       incidents: new PrismaIncidentStore(db),
+      executors: ExecutorRegistry.fromConfig(catalog, process.env),
+      pendingActions: new PrismaPendingActionStore(db),
       timeZone: catalog.display.timeZone,
     },
   });

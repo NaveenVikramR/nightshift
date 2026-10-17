@@ -25,6 +25,7 @@ export async function runTool(
   deps: ToolDeps,
   rawInput: unknown,
   authInfo: AuthInfo | undefined,
+  sessionId?: string,
 ): Promise<CallToolResult> {
   const principal = getPrincipal(authInfo);
   const inputHash = hashInput(rawInput ?? {});
@@ -45,7 +46,11 @@ export async function runTool(
       output = invalidInput(def, parsed.error);
     } else {
       try {
-        output = await def.handler(parsed.data, { principal, deps });
+        output = await def.handler(parsed.data, {
+          principal,
+          deps,
+          ...(sessionId !== undefined && { sessionId }),
+        });
         outcome = 'ok';
       } catch (err) {
         outcome = 'error';

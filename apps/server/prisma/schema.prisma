@@ -25,19 +25,32 @@ model AuditLog {
   @@map("audit_log")
 }
 
-/// Two-phase remediation token (invariant 1). Single use, short-lived.
+/// Two-phase remediation (invariant 1): prepare_action creates it, confirm_action
+/// claims it atomically (status pending → executing) and runs it at most once.
 model PendingAction {
   id             String    @id @default(uuid())
   confirmationId String    @unique
   action         String // failover_provider | rollback_deploy | restart_service
+  service        String    @default("")
+  /// Fully resolved params (every choice made at prepare time).
   params         Json
+  /// sha256 of canonical {action, service, params}; re-checked before executing.
+  paramsHash     String    @default("")
+  /// Blast radius shown to the user: changes, affected, undo, expectedEffect.
+  summary        Json?
   createdBy      String
+  sessionId      String?
+  incidentId     String?
+  status         String    @default("pending") // pending | executing | succeeded | failed | refused
   expiresAt      DateTime
   usedAt         DateTime?
+  executedAt     DateTime?
   result         Json?
+  verification   Json?
   createdAt      DateTime  @default(now())
 
   @@index([createdBy, usedAt])
+  @@index([executedAt])
   @@map("pending_action")
 }
 

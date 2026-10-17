@@ -5,6 +5,8 @@ import type { DeployEventsClient } from '../clients/deploys.js';
 import type { PrometheusClient } from '../clients/prometheus.js';
 import type { AckStore, SilenceStore } from '../db/alertStores.js';
 import type { IncidentStore } from '../db/incidentStore.js';
+import type { PendingActionStore } from '../db/pendingActionStore.js';
+import type { ExecutorRegistry } from '../domain/actions/executors/registry.js';
 import type { Narrator } from '../domain/correlation/narrator.js';
 import type { AuditLog } from '../lib/audit.js';
 import type { Principal } from '../lib/auth.js';
@@ -21,6 +23,11 @@ export interface ToolDeps {
   silences: SilenceStore;
   deploys: DeployEventsClient;
   incidents: IncidentStore;
+  /** Allowlisted executors per service + action (nightshift.yaml). */
+  executors: ExecutorRegistry;
+  pendingActions: PendingActionStore;
+  /** Waits between verification polls (tests make it instant). */
+  sleep?: (ms: number) => Promise<void>;
   /** Speaks a diagnosis; default is the deterministic template (an LLM narrator comes later). */
   narrator?: Narrator;
   /** IANA zone for spoken clock times ("the 2:41 deploy"). */
@@ -33,6 +40,8 @@ export interface ToolDeps {
 export interface ToolContext {
   principal: Principal;
   deps: ToolDeps;
+  /** MCP session id when the transport has one (confirmations are bound to it). */
+  sessionId?: string;
 }
 
 /** Voice-first output contract: speak ≤ 30 words, data for cards / follow-ups. */

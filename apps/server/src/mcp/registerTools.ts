@@ -5,6 +5,7 @@ import { getRecentDeploys } from '../tools/get_recent_deploys.js';
 import { getServiceHealth } from '../tools/get_service_health.js';
 import { listActiveAlerts } from '../tools/list_active_alerts.js';
 import { pingNightshift } from '../tools/ping_nightshift.js';
+import { prepareAction } from '../tools/prepare_action.js';
 import { runTool } from '../tools/runTool.js';
 import { silenceAlert } from '../tools/silence_alert.js';
 import type { ToolDefinition, ToolDeps } from '../tools/types.js';
@@ -19,6 +20,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   getRecentDeploys,
   acknowledgeAlert,
   silenceAlert,
+  prepareAction,
 ] as unknown as readonly ToolDefinition[];
 
 export function registerTools(
@@ -36,7 +38,7 @@ export function registerTools(
         inputSchema: passThroughSchema(def.inputSchema),
         annotations: def.annotations,
       },
-      (input, ctx) => runTool(def, deps, input, ctx.http?.authInfo),
+      (input, ctx) => runTool(def, deps, input, ctx.http?.authInfo, ctx.sessionId),
     );
   }
 }

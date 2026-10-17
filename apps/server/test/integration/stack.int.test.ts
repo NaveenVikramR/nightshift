@@ -21,6 +21,8 @@ import { getServiceHealth } from '../../src/tools/get_service_health.js';
 import { listActiveAlerts } from '../../src/tools/list_active_alerts.js';
 import type { ToolDefinition, ToolDeps } from '../../src/tools/types.js';
 import { InMemoryAuditLog } from '../fakes/inMemoryAuditLog.js';
+import { ExecutorRegistry } from '../../src/domain/actions/executors/registry.js';
+import { InMemoryPendingActionStore } from '../fakes/fakeActions.js';
 import { InMemoryDeployStore } from '../fakes/fakeDeploys.js';
 import {
   InMemoryAckStore,
@@ -51,6 +53,8 @@ const deps: ToolDeps = {
     github: new GitHubDeploySource(catalog.github.apiUrl, undefined, catalog.github.timeoutMs),
   }),
   incidents: new InMemoryIncidentStore(),
+  executors: ExecutorRegistry.fromConfig(catalog, process.env),
+  pendingActions: new InMemoryPendingActionStore(),
   timeZone: catalog.display.timeZone,
   now: () => new Date(),
   serverVersion: 'integration',

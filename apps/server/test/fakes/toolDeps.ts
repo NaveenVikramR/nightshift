@@ -3,6 +3,8 @@ import { parseServiceConfig, type ServiceDef } from '../../src/serviceConfig.js'
 import { runTool } from '../../src/tools/runTool.js';
 import type { ToolDefinition, ToolDeps } from '../../src/tools/types.js';
 import { FakeAlertmanager } from './fakeAlertmanager.js';
+import { ExecutorRegistry } from '../../src/domain/actions/executors/registry.js';
+import { FakeExecutor, InMemoryPendingActionStore } from './fakeActions.js';
 import { FakeDeploys, InMemoryDeployStore } from './fakeDeploys.js';
 import { FakePrometheus } from './fakePrometheus.js';
 import { InMemoryAuditLog } from './inMemoryAuditLog.js';
@@ -13,6 +15,9 @@ export const TEST_SERVICES: readonly ServiceDef[] = parseServiceConfig(
   {
     prometheus: { url: 'http://prom.test' },
     alertmanager: { url: 'http://am.test' },
+    executors: {
+      'demo-admin': { type: 'admin_api', url: 'http://demo.test', tokenEnv: 'DEMO_ADMIN_TOKEN' },
+    },
     services: [
       {
         name: 'payments-api',
@@ -24,6 +29,12 @@ export const TEST_SERVICES: readonly ServiceDef[] = parseServiceConfig(
           throughput: 'payments:throughput',
           breakers: 'payments:breakers',
           authFailures: 'payments:authFailures',
+          activeProvider: 'payments:activeProvider',
+        },
+        actions: {
+          failover_provider: { executor: 'demo-admin', providers: ['razorpay', 'stripe'] },
+          rollback_deploy: { executor: 'demo-admin' },
+          restart_service: { executor: 'demo-admin' },
         },
       },
       {
@@ -55,6 +66,9 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
   const deploys = new FakeDeploys();
   const deployStore = new InMemoryDeployStore(now);
   const incidents = new InMemoryIncidentStore(now);
+  const executor = new FakeExecutor();
+  const executors = new ExecutorRegistry(new Map([[executor.name, executor]]));
+  const pendingActions = new InMemoryPendingActionStore(now);
   const deps: ToolDeps = {
     audit,
     prometheus,
@@ -64,6 +78,9 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
     silences,
     deploys,
     incidents,
+    executors,
+    pendingActions,
+    sleep: async () => {},
     timeZone: 'UTC',
     now,
     serverVersion: '0.1.0',
@@ -80,6 +97,8 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
     deploys,
     deployStore,
     incidents,
+    executor,
+    pendingActions,
   };
 }
 
@@ -103,8 +122,9 @@ export async function invoke<D = Record<string, unknown>>(
   deps: ToolDeps,
   input: unknown,
   auth: AuthInfo = ALICE,
+  sessionId?: string,
 ): Promise<Invoked<D>> {
-  const result = await runTool(def, deps, input, auth);
+  const result = await runTool(def, deps, input, auth, sessionId);
   const sc = result.structuredContent as { speak: string; data: D };
   return { result, speak: sc.speak, data: sc.data, isError: result.isError === true };
 }
