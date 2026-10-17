@@ -260,7 +260,7 @@ export function recentDeployRule(e: Evidence, f: Facts): Cause | undefined {
   // Only the version RUNNING at the onset can have caused it: the latest deploy at
   // or before it. Earlier deploys were superseded (see supersededDeploys).
   const running = runningAt(e, anchor);
-  if (!running) return undefined;
+  if (!running || isNoOpDeploy(e, running)) return undefined;
   const delta = anchor.getTime() - running.deployedAt.getTime();
   if (delta > DEPLOY_WINDOW_MS) return undefined;
   const best = { deploy: running, confidence: round(0.9 - 0.4 * (delta / DEPLOY_WINDOW_MS), 2) };
@@ -284,6 +284,15 @@ export function recentDeployRule(e: Evidence, f: Facts): Cause | undefined {
 /** The latest deploy at or before `t` (the version running then). Deploys are newest first. */
 function runningAt(e: Evidence, t: Date): Evidence['deploys'][number] | undefined {
   return e.deploys.find((d) => d.deployedAt.getTime() <= t.getTime());
+}
+
+/**
+ * A redeploy of the version that was already running changed nothing (e.g. a
+ * reset or a retry), so it is never a suspect.
+ */
+function isNoOpDeploy(e: Evidence, d: Evidence['deploys'][number]): boolean {
+  const previous = e.deploys.find((x) => x.deployedAt.getTime() < d.deployedAt.getTime());
+  return previous !== undefined && previous.version === d.version;
 }
 
 /**
@@ -498,7 +507,8 @@ function breakerAfterDeploy(e: Evidence, f: Facts): BreakerRelation[] {
     if (b.change.kind !== 'entered') continue;
     const opened = b.change.at;
     // The version running when the breaker opened, if it went out within the window.
-    const deploy = runningAt(e, opened);
+    const running = runningAt(e, opened);
+    const deploy = running && !isNoOpDeploy(e, running) ? running : undefined;
     const after = deploy ? opened.getTime() - deploy.deployedAt.getTime() : Infinity;
     const errorsFirst =
       !!deploy && onset !== undefined && onset.getTime() < deploy.deployedAt.getTime();

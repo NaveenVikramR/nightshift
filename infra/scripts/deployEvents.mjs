@@ -25,6 +25,15 @@ export function badDeployEvent(now = new Date()) {
   };
 }
 
+/**
+ * reset puts demo-target back on v1.4.1. Only a real version change is a deploy:
+ * resetting while already on v1.4.1 must not record one (it would look like a
+ * fresh deploy to the correlation rules).
+ */
+export function resetChangesVersion(stateBefore) {
+  return typeof stateBefore?.version === 'string' && stateBefore.version !== 'v1.4.1';
+}
+
 /** reset puts demo-target back on v1.4.1; the deploy history must say so too. */
 export function resetEvent(now = new Date()) {
   return {

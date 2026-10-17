@@ -12,7 +12,13 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { badDeployEvent, baselineEvent, reportDeploy, resetEvent } from './deployEvents.mjs';
+import {
+  badDeployEvent,
+  baselineEvent,
+  reportDeploy,
+  resetChangesVersion,
+  resetEvent,
+} from './deployEvents.mjs';
 
 const envFile = join(dirname(fileURLToPath(import.meta.url)), '..', '.env');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -71,6 +77,14 @@ const request = {
   },
 }[command] ?? { method: 'POST', path: `/admin/chaos/${encodeURIComponent(command ?? '')}` };
 
+// reset: remember the running version, to know whether the reset is a deploy.
+const stateBefore =
+  command === 'reset'
+    ? await fetch(base + '/admin/state', { headers: { authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+    : null;
+
 try {
   const res = await fetch(base + request.path, {
     method: request.method,
@@ -90,8 +104,9 @@ try {
   process.exit(1);
 }
 
-// reset puts demo-target back on v1.4.1: tell the deploy history, or say why we couldn't.
-if (command === 'reset') {
+// reset puts demo-target back on v1.4.1: if that changed the version, tell the deploy
+// history (or say why we couldn't). Already on v1.4.1 → no deploy happened.
+if (command === 'reset' && resetChangesVersion(stateBefore)) {
   if (!ingestToken) {
     console.warn(`warning: deploy history not updated. ${INGEST_HELP}`);
   } else {

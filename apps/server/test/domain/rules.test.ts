@@ -195,6 +195,17 @@ describe('diagnose (rules over evidence)', () => {
     );
   });
 
+  it('a redeploy of the same version is not a change, so it is never blamed', async () => {
+    const d = await run('provider_outage', {
+      tweak: (f) =>
+        f.deploys
+          .add({ service: 'payments-api', version: 'v1.4.1', deployedAt: minutesAgo(30) })
+          .add({ service: 'payments-api', version: 'v1.4.1', deployedAt: minutesAgo(5) }),
+    });
+    expect(ids(d)).toEqual(['provider_failure']);
+    expect(d.relations).toEqual([]);
+  });
+
   it('a deploy after the onset is never blamed in speak or suggested for rollback', async () => {
     const d = await run('latency_spike', {
       tweak: (f) =>

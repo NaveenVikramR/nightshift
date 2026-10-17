@@ -1,7 +1,13 @@
 // node --test infra/scripts
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { badDeployEvent, baselineEvent, reportDeploy, resetEvent } from './deployEvents.mjs';
+import {
+  badDeployEvent,
+  baselineEvent,
+  reportDeploy,
+  resetChangesVersion,
+  resetEvent,
+} from './deployEvents.mjs';
 
 const NOW = new Date('2026-10-18T10:00:00Z');
 
@@ -24,6 +30,12 @@ test('reset reports the restored baseline version', () => {
     author: 'chaos-reset',
     externalId: `chaos-reset-${NOW.getTime()}`,
   });
+});
+
+test('reset is a deploy only when it changes the running version', () => {
+  assert.equal(resetChangesVersion({ version: 'v1.4.2' }), true);
+  assert.equal(resetChangesVersion({ version: 'v1.4.1' }), false);
+  assert.equal(resetChangesVersion(null), false);
 });
 
 test('baseline is idempotent per day and dated two hours back; bad deploy ships v1.4.2', () => {
