@@ -16,7 +16,7 @@
     "dev": "npm run dev -w @nightshift/server",
     "start": "npm run start -w @nightshift/server",
     "build": "npm run build -w @nightshift/server",
-    "test": "npm test --workspaces --if-present",
+    "test": "npm test --workspaces --if-present && node --test \"infra/scripts/*.test.mjs\"",
     "test:integration": "npm run test:integration -w @nightshift/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",

@@ -4,19 +4,26 @@
 //   node infra/scripts/chaos.mjs bad_deploy [delaySeconds]
 //   node infra/scripts/chaos.mjs reset | state | route-provider <razorpay|stripe>
 // Reads DEMO_ADMIN_TOKEN and DEMO_TARGET_URL from infra/.env (or the environment).
-// bad_deploy also reads NIGHTSHIFT_URL and NIGHTSHIFT_INGEST_TOKEN: it reports the
-// deploy to Nightshift like a CI system would, THEN arms demo-target, so the deploy
-// timestamp always precedes the failure.
+// bad_deploy and reset also read NIGHTSHIFT_URL and NIGHTSHIFT_INGEST_TOKEN: they
+// report deploys to Nightshift like a CI system would, so the deploy history always
+// matches what demo-target runs. bad_deploy reports BEFORE arming demo-target, so the
+// deploy timestamp always precedes the failure.
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { badDeployEvent, baselineEvent, reportDeploy, resetEvent } from './deployEvents.mjs';
 
 const envFile = join(dirname(fileURLToPath(import.meta.url)), '..', '.env');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 const token = process.env.DEMO_ADMIN_TOKEN;
 const base = process.env.DEMO_TARGET_URL ?? 'http://127.0.0.1:18080';
+const nightshiftUrl = process.env.NIGHTSHIFT_URL ?? 'http://127.0.0.1:3000';
+const ingestToken = process.env.NIGHTSHIFT_INGEST_TOKEN;
 const [command, arg] = process.argv.slice(2);
+
+const INGEST_HELP =
+  'NIGHTSHIFT_INGEST_TOKEN is not set in infra/.env. Create one with: npm run token:new -- chaos-ci ingest';
 
 if (!token) {
   console.error(
@@ -25,64 +32,24 @@ if (!token) {
   process.exit(1);
 }
 
-const BASELINE_DEPLOY = {
-  service: 'payments-api',
-  version: 'v1.4.1',
-  commitMessage: 'stable payments release',
-  author: 'ci',
-};
-
-const BAD_DEPLOY = {
-  service: 'payments-api',
-  version: 'v1.4.2',
-  commitMessage: 'tune payment retry config',
-  author: 'ci',
-};
-
-async function reportDeploy() {
-  const url = process.env.NIGHTSHIFT_URL ?? 'http://127.0.0.1:3000';
-  const ingestToken = process.env.NIGHTSHIFT_INGEST_TOKEN;
-  if (!ingestToken) {
-    console.error(
-      'NIGHTSHIFT_INGEST_TOKEN is not set in infra/.env. Create one with: npm run token:new -- chaos-ci ingest',
-    );
+async function report(event) {
+  try {
+    return await reportDeploy({ url: nightshiftUrl, token: ingestToken, event });
+  } catch (err) {
+    console.error(err.message);
     process.exit(1);
   }
-  const post = async (event) => {
-    let res;
-    try {
-      res = await fetch(`${url}/events/deploy`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${ingestToken}`, 'content-type': 'application/json' },
-        body: JSON.stringify(event),
-      });
-    } catch (err) {
-      console.error(
-        `Could not reach Nightshift at ${url} (${err.cause?.code ?? err.message}). Is it running?`,
-      );
-      process.exit(1);
-    }
-    const body = await res.text();
-    if (!res.ok) {
-      console.error(`Nightshift refused the deploy event (${res.status}): ${body}`);
-      process.exit(1);
-    }
-    return body;
-  };
-
-  // The version running before the bad deploy, so rollback has a target. Once
-  // per day (idempotent externalId), dated two hours back.
-  const day = new Date().toISOString().slice(0, 10);
-  await post({
-    ...BASELINE_DEPLOY,
-    externalId: `chaos-baseline-v1.4.1-${day}`,
-    deployedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
-  });
-  const body = await post({ ...BAD_DEPLOY, externalId: `chaos-bad-deploy-${Date.now()}` });
-  console.log(`deploy recorded -> ${body}`);
 }
 
-if (command === 'bad_deploy') await reportDeploy();
+if (command === 'bad_deploy') {
+  if (!ingestToken) {
+    console.error(INGEST_HELP);
+    process.exit(1);
+  }
+  // Baseline first (so a rollback has a target), then the bad deploy, then arm demo-target.
+  await report(baselineEvent());
+  console.log(`deploy recorded -> ${JSON.stringify(await report(badDeployEvent()))}`);
+}
 
 const request = {
   reset: { method: 'POST', path: '/admin/reset' },
@@ -115,4 +82,22 @@ try {
     `Could not reach demo-target at ${base} (${err.cause?.code ?? err.message}). Is the stack up?`,
   );
   process.exit(1);
+}
+
+// reset puts demo-target back on v1.4.1: tell the deploy history, or say why we couldn't.
+if (command === 'reset') {
+  if (!ingestToken) {
+    console.warn(`warning: deploy history not updated. ${INGEST_HELP}`);
+  } else {
+    try {
+      const answer = await reportDeploy({
+        url: nightshiftUrl,
+        token: ingestToken,
+        event: resetEvent(),
+      });
+      console.log(`deploy recorded -> ${answer.version} (${answer.environment})`);
+    } catch (err) {
+      console.warn(`warning: deploy history not updated. ${err.message}`);
+    }
+  }
 }
