@@ -60,6 +60,15 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
   - **One misreading:** it read our downsampled card points as raw data ("90 s gaps"). We fixed that
     on our side by labelling the sampling in `data`.
   - **Lesson:** tool output that will be reasoned over needs to say what it is.
+- **Day 4 end-to-end (two-phase remediation):**
+  - **Asked first:** after "Fail over to Stripe" it called `prepare_action`, passing the
+    `explain_incident` suggestion through unchanged, and asked before acting. `confirm_action` only
+    ran after "Yes".
+  - **Viewer:** a viewer token was refused at `prepare_action`. Claude Code explicitly declined to work
+    around it (for example, by calling the admin API directly).
+  - **Session binding:** `claude -p --resume` starts a new MCP session, so a confirmation bound to the
+    first session would be refused by design. Multi-turn checks therefore need one process with
+    `--input-format stream-json`.
 - **Onboarding:** About 2 minutes.
 - **Would I build with it again?** Yes.
 

@@ -4,11 +4,11 @@ Nightshift is a voice on-call and security copilot for small engineering teams: 
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
 take safe, explicitly confirmed actions.
 
-> Status: **Day 3.** Transport, auth, roles, database and audit log, plus seven tools:
+> Status: **Day 4.** Transport, auth, roles, database and audit log, plus nine tools:
 > `ping_nightshift`, `list_active_alerts`, `get_service_health`, `acknowledge_alert`,
-> `silence_alert`, `get_recent_deploys` and `explain_incident` (grounded incident diagnosis),
-> running against a local Prometheus + Alertmanager stack with deploy history from CI or GitHub.
-> Two-phase remediation and security posture land next.
+> `silence_alert`, `get_recent_deploys`, `explain_incident` (grounded incident diagnosis), and
+> two-phase remediation with `prepare_action` / `confirm_action` (fail over, roll back, restart).
+> Security posture lands next.
 
 ## Prerequisites
 
@@ -138,6 +138,54 @@ Deterministic rules over collected evidence (an LLM never decides the cause):
    Stripe or roll back."_ Commit messages and alert text are never spoken here.
 
 Each diagnosis opens or updates the service's open incident in Postgres.
+
+## Safety model
+
+Nightshift can change production, so every remediation goes through the same guarded path. The
+rules are enforced in the server, never in a prompt.
+
+1. **Two-phase confirmation.** `prepare_action` changes nothing. It checks live state and returns
+   what would change (changes, who is affected, how to undo, expected effect), plus a confirmation
+   id. The assistant must ask, for example _"This will route all payments API traffic from Razorpay
+   to Stripe. You can switch back anytime. Shall I go ahead?"_ Only after a clear yes does
+   `confirm_action` run it.
+2. **Allowlist.** Only `failover_provider`, `rollback_deploy` and `restart_service`, and only where
+   `nightshift.yaml` lists that action for that service with an executor. There's no shell, no
+   Docker socket and no arbitrary URLs. Secrets are referenced by env var name only.
+3. **Roles.** `viewer` tokens can diagnose but never prepare or confirm; both tools need
+   `responder`.
+4. **Bound, short-lived, single-use.** A confirmation id is random (128 bits) and never spoken. It
+   expires after 2 minutes and works only for the same person in the same MCP session. Anyone else
+   gets "I can't find that confirmation", so nothing leaks.
+5. **Idempotency.** Confirming claims the action atomically (one conditional update), so
+   concurrent confirms run it once. A reused id returns the original result ("That's already
+   done.") and never runs it again.
+6. **Re-check before acting.** Just before executing, Nightshift re-reads live state. If someone
+   already failed over, or the provider recovered, it does nothing and says why.
+7. **Rate limit.** At most 3 executed actions per 10 minutes per team. The 4th is refused with
+   when to try again.
+8. **Verification.** After acting, it polls the error rate for up to about 20 seconds and reports
+   _recovered_, _recovering_ (with the measured numbers) or _no improvement yet_. It never claims
+   a recovery the metrics don't show. A failed action reports the reason. A timeout says it can't
+   tell whether the action took effect.
+9. **Audit and timeline.** Every call writes an audit row (actor, role, tool, input hash,
+   outcome). The incident timeline records prepared, confirmed, executed or failed, and the
+   verification result.
+
+### Admin API contract (executor `admin_api`)
+
+Any service can become remediable by exposing these endpoints, protected by a bearer token:
+
+| Method and path              | Body                       | Effect                                    |
+| ---------------------------- | -------------------------- | ----------------------------------------- |
+| `GET /admin/state`           |                            | `{ activeProvider, version, restarting }` |
+| `POST /admin/route-provider` | `{ "provider": "stripe" }` | Send traffic to that provider             |
+| `POST /admin/rollback`       | `{ "version": "v1.4.1" }`  | Deploy that version                       |
+| `POST /admin/restart`        |                            | Restart (briefly unavailable)             |
+
+`rollback_deploy` can instead use a `github_workflow` executor, which triggers a `rollback.yml`
+workflow through `workflow_dispatch` with a `version` input. That needs a fine-grained token with
+Actions: write.
 
 ## Test
 

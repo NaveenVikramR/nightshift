@@ -104,8 +104,9 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 
 ## Runtime constraints
 
-- **Single instance only.** MCP sessions (`src/http/sessionStore.ts`) and failed-auth counters
-  (`src/lib/authFailureLimiter.ts`) live in process memory. Deploy exactly one instance (no
+- **Single instance only.** MCP sessions (`src/http/sessionStore.ts`), failed-auth counters
+  (`src/lib/authFailureLimiter.ts`) and the confirm lock (`confirm_action`: rate-limit check +
+  atomic claim) live in process memory. Deploy exactly one instance (no
   horizontal scaling) until a shared store exists. Behind a proxy set `TRUST_PROXY=true`.
 - Middleware order (`src/http/createApp.ts`): `express.json` (413) → on `/mcp`: tool-call audit
   tap (observes; audits refusals + unknown tools) → SDK Host guard (403) → exact-origin guard
@@ -119,11 +120,20 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
   `src/serviceConfig.ts` at startup: Prometheus/Alertmanager URLs (env `PROMETHEUS_URL` /
   `ALERTMANAGER_URL` override), services with aliases + PromQL per signal (incl. optional
   `authFailures` / `webhookFailures`) + thresholds, `deploys: { source: ingest | github, repo?,
-environment }`, `display.timeZone` (spoken clock times), `github.apiUrl`, and the `scanAssets`
-  allowlist. New apps plug in here only; no app-specific code.
+environment }`, `display.timeZone` (spoken clock times), `github.apiUrl`, `executors`
+  (`admin_api` {url, tokenEnv} | `github_workflow` {repo, workflow, ref, tokenEnv}; secrets by env
+  var name only), per-service `actions` (which of the 3 remediations, which executor, failover
+  `providers`), optional `activeProvider` query, and the `scanAssets` allowlist. New apps plug in here only; no app-specific code.
 - Commit messages are untrusted too: stored via `quoteUntrusted(…, { multiline })`, never read by
   a rule, never spoken by `explain_incident`; only `get_recent_deploys` may speak a first line that
   passes `speakableCommitLine` (≤ 8 words, safe chars, not instruction-like).
+- Remediation (`src/domain/actions/`): `types.ts` (the 3 allowlisted actions + zod params shared
+  with `explain_incident` suggestions), `plan.ts` (pure preconditions + blast radius, run at
+  prepare AND again at confirm), `snapshot.ts` (executor state + metrics + deploys),
+  `verify.ts` (measured recovered/recovering/no improvement), `executors/` (admin API contract,
+  GitHub workflow_dispatch). `PendingAction`: random id, bound to actor + MCP session, 2-min
+  expiry, atomic claim (conditional update), stored result replayed on reuse. Rate limit 3
+  executed / 10 min. `DEMO_ADMIN_TOKEN` (server env) for the demo executor.
 - Alert label/annotation text is untrusted: `toAlertView` sanitizes identifiers (safe to speak) and
   wraps annotations as `{ untrusted: true, text }` (data only, never spoken). `rawLabels` is used
   only as exact-match silence matchers.
@@ -142,8 +152,8 @@ environment }`, `display.timeZone` (spoken clock times), `github.apiUrl`, and th
 | `get_recent_deploys`    | read                                      | viewer      | ✅ Day 3 |
 | `acknowledge_alert`     | write (low)                               | responder   | ✅ Day 2 |
 | `silence_alert`         | write (max 4h)                            | responder   | ✅ Day 2 |
-| `prepare_action`        | no side effect, returns `confirmation_id` | responder   |          |
-| `confirm_action`        | write (executes)                          | responder   |          |
+| `prepare_action`        | no side effect, returns `confirmation_id` | responder   | ✅ Day 4 |
+| `confirm_action`        | write (executes)                          | responder   | ✅ Day 4 |
 | `run_security_scan`     | read external, writes findings            | viewer      |          |
 | `get_security_findings` | read                                      | viewer      |          |
 | `get_incident_timeline` | read                                      | viewer      |          |
