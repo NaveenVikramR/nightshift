@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { acknowledgeAlert } from '../tools/acknowledge_alert.js';
+import { confirmAction } from '../tools/confirm_action.js';
 import { explainIncident } from '../tools/explain_incident.js';
 import { getRecentDeploys } from '../tools/get_recent_deploys.js';
 import { getServiceHealth } from '../tools/get_service_health.js';
@@ -21,6 +22,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   acknowledgeAlert,
   silenceAlert,
   prepareAction,
+  confirmAction,
 ] as unknown as readonly ToolDefinition[];
 
 export function registerTools(

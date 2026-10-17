@@ -4,6 +4,7 @@ import type { AlertmanagerClient } from '../clients/alertmanager.js';
 import type { DeployEventsClient } from '../clients/deploys.js';
 import type { PrometheusClient } from '../clients/prometheus.js';
 import type { AckStore, SilenceStore } from '../db/alertStores.js';
+import type { DeployStore } from '../db/deployStore.js';
 import type { IncidentStore } from '../db/incidentStore.js';
 import type { PendingActionStore } from '../db/pendingActionStore.js';
 import type { ExecutorRegistry } from '../domain/actions/executors/registry.js';
@@ -26,6 +27,8 @@ export interface ToolDeps {
   /** Allowlisted executors per service + action (nightshift.yaml). */
   executors: ExecutorRegistry;
   pendingActions: PendingActionStore;
+  /** Where Nightshift records deploys it performs itself (rollbacks). */
+  deployLog?: DeployStore;
   /** Waits between verification polls (tests make it instant). */
   sleep?: (ms: number) => Promise<void>;
   /** Speaks a diagnosis; default is the deterministic template (an LLM narrator comes later). */
@@ -48,6 +51,8 @@ export interface ToolContext {
 export interface ToolOutput<D = unknown> {
   speak: string;
   data: D;
+  /** A handled failure that still returns data (e.g. an action that failed): isError + audited as error. */
+  isError?: boolean;
 }
 
 export interface ToolDefinition<S extends z.ZodObject = z.ZodObject, D = unknown> {

@@ -80,6 +80,7 @@ export function fakeToolDeps(services: readonly ServiceDef[] = TEST_SERVICES) {
     incidents,
     executors,
     pendingActions,
+    deployLog: deployStore,
     sleep: async () => {},
     timeZone: 'UTC',
     now,

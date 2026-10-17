@@ -67,6 +67,7 @@ export function createApp({
   now = Date.now,
 }: AppDeps): NightshiftApp {
   const toolDeps: ToolDeps = {
+    deployLog: deployStore,
     ...deps,
     now: () => new Date(now()),
     serverVersion: SERVER_VERSION,

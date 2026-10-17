@@ -51,7 +51,7 @@ export async function runTool(
           deps,
           ...(sessionId !== undefined && { sessionId }),
         });
-        outcome = 'ok';
+        outcome = output.isError ? 'error' : 'ok';
       } catch (err) {
         outcome = 'error';
         if (err instanceof UserFacingError) {
