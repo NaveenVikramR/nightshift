@@ -285,11 +285,13 @@ export const confirmAction: ToolDefinition<typeof inputSchema, ConfirmData> = {
       };
       await record(deps, row, principal.actor, 'failed', `failed ${describeAction(action)}`, {
         reason: out.data.reason,
+        action,
       });
       return finish('failed', out, { executedAt });
     }
     await record(deps, row, principal.actor, 'executed', `executed ${describeAction(action)}`, {
       detail,
+      action,
     });
 
     if (action.action === 'rollback_deploy' && executor.type === 'admin_api' && deps.deployLog) {
@@ -323,6 +325,8 @@ export const confirmAction: ToolDefinition<typeof inputSchema, ConfirmData> = {
     await record(deps, row, principal.actor, 'verified', `verification: ${verification.outcome}`, {
       before: verification.before,
       after: verification.after,
+      outcome: verification.outcome,
+      action,
     });
 
     const out = {

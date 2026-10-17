@@ -212,6 +212,8 @@ async function recordIncident(d: Diagnosis, deps: ToolDeps, actor: string): Prom
       relations: d.relations,
       sources: d.sources,
       window: d.window,
+      // Sanitized names only (no annotation text): the timeline shows when alerts fired.
+      alerts: d.alerts.map((a) => ({ name: a.name, severity: a.severity, startsAt: a.startsAt })),
     },
   });
   return incident.id;
