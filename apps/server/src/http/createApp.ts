@@ -68,6 +68,7 @@ export function createApp({
 }: AppDeps): NightshiftApp {
   const toolDeps: ToolDeps = {
     deployLog: deployStore,
+    strictSessionBinding: config.strictSessionBinding,
     ...deps,
     now: () => new Date(now()),
     serverVersion: SERVER_VERSION,

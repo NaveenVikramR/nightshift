@@ -116,21 +116,33 @@ describe('confirm_action', () => {
     expect(f.executor.executed).toEqual([]);
   });
 
-  it.each([
-    ['another responder', CAROL, SESSION],
-    ['the same actor in another session', ALICE, 'session-2'],
-  ])(
-    'refuses %s, without revealing that the confirmation exists',
-    async (_label, auth, session) => {
-      const f = setup();
-      const id = await prepared(f);
-      const r = await confirm(f, id, auth, session);
-      expect(r.isError).toBe(true);
-      expect(r.speak).toBe("I can't find that confirmation. Ask me to prepare the action again.");
-      expect(f.executor.executed).toEqual([]);
-      expect(f.pendingActions.rows.get(id)!.status).toBe('pending');
-    },
-  );
+  it('refuses another responder, without revealing that the confirmation exists', async () => {
+    const f = setup();
+    const id = await prepared(f);
+    const r = await confirm(f, id, CAROL, SESSION);
+    expect(r.isError).toBe(true);
+    expect(r.speak).toBe("I can't find that confirmation. Ask me to prepare the action again.");
+    expect(f.executor.executed).toEqual([]);
+    expect(f.pendingActions.rows.get(id)!.status).toBe('pending');
+  });
+
+  it('works from a new MCP session by the same actor (voice clients reconnect)', async () => {
+    const f = setup();
+    const id = await prepared(f);
+    const r = await confirm(f, id, ALICE, 'session-2');
+    expect(r.speak).toMatch(/^Done. Payments API now uses Stripe./);
+    expect(f.executor.executed).toHaveLength(1);
+  });
+
+  it('strict session binding refuses a new session', async () => {
+    const f = setup();
+    f.deps.strictSessionBinding = true;
+    const id = await prepared(f);
+    const r = await confirm(f, id, ALICE, 'session-2');
+    expect(r.speak).toBe("I can't find that confirmation. Ask me to prepare the action again.");
+    expect(f.executor.executed).toEqual([]);
+    expect((await confirm(f, id, ALICE, SESSION)).speak).toMatch(/^Done./); // same session still works
+  });
 
   it('refuses unknown and malformed ids the same way', async () => {
     const f = setup();

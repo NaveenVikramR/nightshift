@@ -154,9 +154,16 @@ rules are enforced in the server, never in a prompt.
    Docker socket and no arbitrary URLs. Secrets are referenced by env var name only.
 3. **Roles.** `viewer` tokens can diagnose but never prepare or confirm; both tools need
    `responder`.
-4. **Bound, short-lived, single-use.** A confirmation id is random (128 bits) and never spoken. It
-   expires after 2 minutes and works only for the same person in the same MCP session. Anyone else
-   gets "I can't find that confirmation", so nothing leaks.
+4. **Bound, short-lived, single-use.** A confirmation id is random (128 bits) and never spoken. It is
+   bound to the actor (token) that prepared it and to the exact params (`paramsHash`). It expires
+   after 2 minutes and works once. Anyone else gets "I can't find that confirmation", so nothing
+   leaks.
+
+   **Session binding is optional** (`STRICT_SESSION_BINDING`, default `false`). Voice clients may
+   reconnect between "fail over?" and "yes", which opens a new MCP session, and strict binding would
+   refuse the yes. With it off, a stolen confirmation id is still useless without the same actor's
+   token within 2 minutes. Turn it on when your client keeps one session per conversation.
+
 5. **Idempotency.** Confirming claims the action atomically (one conditional update), so
    concurrent confirms run it once. A reused id returns the original result ("That's already
    done.") and never runs it again.

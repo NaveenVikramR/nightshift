@@ -29,6 +29,8 @@ export interface ToolDeps {
   pendingActions: PendingActionStore;
   /** Where Nightshift records deploys it performs itself (rollbacks). */
   deployLog?: DeployStore;
+  /** confirm_action requires the preparing MCP session too (STRICT_SESSION_BINDING). */
+  strictSessionBinding?: boolean;
   /** Waits between verification polls (tests make it instant). */
   sleep?: (ms: number) => Promise<void>;
   /** Speaks a diagnosis; default is the deterministic template (an LLM narrator comes later). */

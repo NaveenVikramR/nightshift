@@ -66,9 +66,11 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
     ran after "Yes".
   - **Viewer:** a viewer token was refused at `prepare_action`. Claude Code explicitly declined to work
     around it (for example, by calling the admin API directly).
-  - **Session binding:** `claude -p --resume` starts a new MCP session, so a confirmation bound to the
-    first session would be refused by design. Multi-turn checks therefore need one process with
-    `--input-format stream-json`.
+  - **Session binding:** `claude -p --resume` starts a NEW MCP session for the same conversation.
+    Strict MCP-session binding of confirmations therefore refused the user's "yes" across turns.
+    Voice clients (Alexa+) may also reconnect between turns. Since Day 5, binding is actor + params
+    - expiry + single use, and session binding is opt-in (`STRICT_SESSION_BINDING`). It would help
+      if MCP clients documented when they reuse versus recreate sessions.
 - **Onboarding:** About 2 minutes.
 - **Would I build with it again?** Yes.
 

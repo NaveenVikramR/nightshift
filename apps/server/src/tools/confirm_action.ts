@@ -143,7 +143,12 @@ export const confirmAction: ToolDefinition<typeof inputSchema, ConfirmData> = {
     const sameOwner =
       row !== undefined &&
       row.createdBy === principal.actor &&
-      (row.sessionId === null || sessionId === undefined || row.sessionId === sessionId);
+      // Actor + paramsHash + expiry + single use always; the MCP session only in strict mode,
+      // because voice clients may reconnect between "fail over" and "yes".
+      (!deps.strictSessionBinding ||
+        row.sessionId === null ||
+        sessionId === undefined ||
+        row.sessionId === sessionId);
     if (!row || !sameOwner) {
       if (row) log.warn('confirmation owner mismatch', { tool: 'confirm_action' });
       throw new UserFacingError('unknown_confirmation', NOT_FOUND);

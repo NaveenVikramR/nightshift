@@ -19,6 +19,11 @@ describe('loadConfig', () => {
     });
   });
 
+  it('parses STRICT_SESSION_BINDING (default off)', () => {
+    expect(loadConfig({}).strictSessionBinding).toBe(false);
+    expect(loadConfig({ STRICT_SESSION_BINDING: 'true' }).strictSessionBinding).toBe(true);
+  });
+
   it('treats empty values as unset', () => {
     expect(loadConfig({ PORT: '', HOST: '' })).toMatchObject({ port: 3000, host: '127.0.0.1' });
   });

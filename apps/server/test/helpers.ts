@@ -21,6 +21,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     allowedOrigins: [ALLOWED_ORIGIN],
     allowedHosts: [],
     trustProxy: false,
+    strictSessionBinding: false,
     maxBodyBytes: 1024 * 1024,
     sessionIdleTtlMs: 30 * 60_000,
     tokens: [

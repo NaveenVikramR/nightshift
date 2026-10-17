@@ -56,6 +56,7 @@ const envSchema = z.object({
   ALLOWED_ORIGINS: csv.pipe(z.array(origin)),
   ALLOWED_HOSTS: csv,
   TRUST_PROXY: boolean,
+  STRICT_SESSION_BINDING: boolean,
   MCP_MAX_BODY_BYTES: optional(
     z.coerce
       .number()
@@ -95,6 +96,8 @@ export interface Config {
   /** Host header values accepted (DNS-rebinding protection). Empty = localhost set. */
   allowedHosts: string[];
   trustProxy: boolean;
+  /** confirm_action also requires the MCP session that prepared the action. Default false. */
+  strictSessionBinding: boolean;
   maxBodyBytes: number;
   sessionIdleTtlMs: number;
   tokens: TokenEntry[];
@@ -131,6 +134,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedOrigins: e.ALLOWED_ORIGINS,
     allowedHosts: e.ALLOWED_HOSTS,
     trustProxy: e.TRUST_PROXY,
+    strictSessionBinding: e.STRICT_SESSION_BINDING,
     maxBodyBytes: e.MCP_MAX_BODY_BYTES,
     sessionIdleTtlMs: e.SESSION_IDLE_TTL_MINUTES * 60_000,
     tokens: e.NIGHTSHIFT_TOKENS,
