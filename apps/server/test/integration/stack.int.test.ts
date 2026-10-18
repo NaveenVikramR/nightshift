@@ -118,6 +118,55 @@ async function waitFor<T>(what: string, probe: () => Promise<T | undefined>, tim
   throw new Error(`timed out waiting for ${what}`);
 }
 
+/**
+ * Reset, then wait until the system has been quiet (no breaker alert, errors under
+ * the threshold) for a full minute, so the next failure is a separate onset and
+ * not merged with the previous test's spike (30 s resolution).
+ */
+async function quietMinute(): Promise<void> {
+  await chaos('/admin/reset');
+  const payments = catalog.services.find((s) => s.name === 'payments-api')!;
+  // Like `npm run chaos:reset`: a reset that changed the version is a deploy of v1.4.1.
+  const latest = (
+    await deps.deploys.listDeploys(payments, {
+      since: new Date(Date.now() - 24 * 60 * 60_000),
+      until: new Date(),
+      limit: 1,
+    })
+  )[0];
+  if (latest && latest.version !== 'v1.4.1') {
+    const at = new Date();
+    await deployStore.insertOnce({
+      source: 'integration-reset',
+      externalId: `reset-${at.getTime()}`,
+      service: payments.name,
+      environment: payments.deploys?.environment ?? 'production',
+      version: 'v1.4.1',
+      commitSha: null,
+      commitMessage: null,
+      author: 'chaos-reset',
+      status: 'success',
+      deployedAt: at,
+    });
+  }
+  const quietNow = async () => {
+    const breakerAlert = (await deps.alertmanager.listAlerts()).some(
+      (a) => a.labels['alertname'] === 'CircuitBreakerOpen' && a.state === 'active',
+    );
+    const err = (await deps.prometheus.instant(payments.queries.errorRate))[0]?.value ?? NaN;
+    return !breakerAlert && err < payments.thresholds.errorRate;
+  };
+  await waitFor(
+    'a quiet minute',
+    async () => {
+      if (!(await quietNow())) return undefined;
+      await new Promise((r) => setTimeout(r, 60_000));
+      return (await quietNow()) ? true : undefined;
+    },
+    240_000,
+  );
+}
+
 beforeAll(async () => {
   if (!TOKEN)
     throw new Error('DEMO_ADMIN_TOKEN missing: create infra/.env (see infra/.env.example)');
@@ -189,6 +238,7 @@ describe('live stack', () => {
   });
 
   it('bad_deploy: explain_incident blames the deploy and the razorpay breaker', async () => {
+    await quietMinute();
     const payments = catalog.services.find((s) => s.name === 'payments-api')!;
     const deployedAt = new Date();
     // What POST /events/deploy stores for a CI deploy (the route itself is unit-tested).
@@ -280,7 +330,7 @@ describe('remediation (two-phase) against the stack', () => {
   }
 
   it('bad_deploy → explain_incident → prepare rollback → confirm → errors recover', async () => {
-    await quiet();
+    await quietMinute();
     const deployedAt = new Date();
     for (const [version, at] of [
       ['v1.4.1', new Date(deployedAt.getTime() - 2 * 60 * 60_000)],
@@ -433,38 +483,8 @@ describe('security posture and incident story against the stack', () => {
     // Isolate from incidents opened by earlier tests in this file.
     for (const i of await deps.incidents.listOpen()) await deps.incidents.resolve(i.id, new Date());
     clockOffsetMs = 0; // no more scans: real time again, so the story's times are real
-    await chaos('/admin/reset');
     // An earlier outage's alert must be gone first, or the new outage reuses it (old startsAt).
-    const payments = catalog.services.find((s) => s.name === 'payments-api')!;
-    const quietNow = async () => {
-      const breakerAlert = (await deps.alertmanager.listAlerts()).some(
-        (a) => a.labels['alertname'] === 'CircuitBreakerOpen' && a.state === 'active',
-      );
-      const err = (await deps.prometheus.instant(payments.queries.errorRate))[0]?.value ?? NaN;
-      return !breakerAlert && err < payments.thresholds.errorRate;
-    };
-    // Quiet for a full minute, so the new outage is a separate onset (not merged
-    // with the previous incident's spike at 30 s resolution).
-    await waitFor(
-      'a quiet minute',
-      async () => {
-        if (!(await quietNow())) return undefined;
-        await new Promise((r) => setTimeout(r, 60_000));
-        return (await quietNow()) ? true : undefined;
-      },
-      240_000,
-    );
-    await waitFor(
-      'a quiet system',
-      async () => {
-        const breakerAlert = (await deps.alertmanager.listAlerts()).some(
-          (a) => a.labels['alertname'] === 'CircuitBreakerOpen' && a.state === 'active',
-        );
-        const err = (await deps.prometheus.instant(payments.queries.errorRate))[0]?.value ?? NaN;
-        return !breakerAlert && err < payments.thresholds.errorRate ? true : undefined;
-      },
-      180_000,
-    );
+    await quietMinute();
     const started = new Date();
     await chaos('/admin/chaos/provider_outage');
     await waitFor('breaker open alert', async () =>

@@ -3,6 +3,7 @@ import type { Response } from 'supertest';
 import type { Config } from '../src/config.js';
 import { createApp, type NightshiftApp } from '../src/http/createApp.js';
 import { sha256Hex } from '../src/lib/auth.js';
+import type { Notifier } from '../src/notify/notifier.js';
 import type { ToolDefinition } from '../src/tools/types.js';
 import type { InMemoryAuditLog } from './fakes/inMemoryAuditLog.js';
 import { fakeToolDeps } from './fakes/toolDeps.js';
@@ -11,6 +12,7 @@ import { fakeToolDeps } from './fakes/toolDeps.js';
 export const RESPONDER_TOKEN = 'test-responder-token';
 export const VIEWER_TOKEN = 'test-viewer-token';
 export const INGEST_TOKEN = 'test-ingest-token';
+export const ALERT_WEBHOOK_TOKEN = 'test-alertmanager-webhook-token';
 export const ALLOWED_ORIGIN = 'http://localhost:6274';
 export const PROTOCOL = '2025-11-25';
 
@@ -22,6 +24,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     allowedHosts: [],
     trustProxy: false,
     strictSessionBinding: false,
+    alertmanagerWebhookToken: ALERT_WEBHOOK_TOKEN,
+    telegram: undefined,
     maxBodyBytes: 1024 * 1024,
     sessionIdleTtlMs: 30 * 60_000,
     tokens: [
@@ -46,7 +50,7 @@ export interface TestHarness {
 
 export function makeHarness(
   overrides: Partial<Config> = {},
-  opts: { tools?: readonly ToolDefinition[] } = {},
+  opts: { tools?: readonly ToolDefinition[]; notifier?: Notifier } = {},
 ): TestHarness {
   const fakes = fakeToolDeps();
   const { audit } = fakes;
@@ -57,6 +61,7 @@ export function makeHarness(
     deps: external,
     deployStore: fakes.deployStore,
     ...(opts.tools && { tools: opts.tools }),
+    ...(opts.notifier && { notifier: opts.notifier }),
     now: () => clock.now,
   });
   return { ns, audit, clock, fakes };

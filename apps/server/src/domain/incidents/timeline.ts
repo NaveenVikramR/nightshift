@@ -21,7 +21,8 @@ export type TimelineKind =
   | 'verified'
   | 'note'
   | 'resolved'
-  | 'routing';
+  | 'routing'
+  | 'notified';
 
 export interface TimelineEntry {
   at: string;
@@ -109,6 +110,14 @@ export function buildTimeline(
         actor: e.actor,
         text: e.message,
         ...(d.note && { note: d.note }),
+      });
+    } else if (e.kind === 'notification') {
+      entries.push({
+        at,
+        kind: 'notified',
+        actor: null,
+        text: e.message,
+        data: (e.data ?? {}) as Record<string, unknown>,
       });
     } else if (e.kind === 'routing') {
       entries.push({

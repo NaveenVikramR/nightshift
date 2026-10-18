@@ -9,9 +9,10 @@ import { PrismaPendingActionStore } from './db/pendingActionStore.js';
 import { PrismaSecurityStore } from './db/securityStore.js';
 import { createPostureScanner } from './domain/posture/index.js';
 import { ExecutorRegistry } from './domain/actions/executors/registry.js';
-import { createPrismaClient } from './db/prisma.js';
+import { createPrismaClient, probeDatabase, type Db } from './db/prisma.js';
 import { PrismaAuditLog } from './db/prismaAuditLog.js';
 import { createApp } from './http/createApp.js';
+import { noopNotifier, TelegramNotifier } from './notify/notifier.js';
 import { log } from './lib/log.js';
 import { loadServiceConfig } from './serviceConfig.js';
 import { SERVER_VERSION, TARGET_PROTOCOL_VERSION } from './version.js';
@@ -33,8 +34,10 @@ async function main(): Promise<void> {
   if (!config.databaseUrl) {
     throw new ConfigError('DATABASE_URL is required (audit log). See apps/server/.env.example');
   }
-  const db = createPrismaClient(config.databaseUrl);
+  let db: Db;
   try {
+    await probeDatabase(config.databaseUrl);
+    db = createPrismaClient(config.databaseUrl);
     await db.$queryRaw`SELECT 1`;
   } catch {
     throw new ConfigError("Can't reach the database at DATABASE_URL. Is it running and migrated?");
@@ -55,9 +58,17 @@ async function main(): Promise<void> {
   }
   const deployStore = new PrismaDeployStore(db);
   const prometheus = new HttpPrometheusClient(catalog.prometheus.url, catalog.prometheus.timeoutMs);
+  if (!config.telegram)
+    log.warn('TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set: alert pushes are off');
+  if (!config.alertmanagerWebhookToken) {
+    log.warn('ALERTMANAGER_WEBHOOK_TOKEN not set: /webhooks/alertmanager answers 401');
+  }
   const nightshift = createApp({
     config,
     deployStore,
+    notifier: config.telegram
+      ? new TelegramNotifier({ ...config.telegram, timeoutMs: 5000 })
+      : noopNotifier,
     deps: {
       audit: new PrismaAuditLog(db),
       prometheus,

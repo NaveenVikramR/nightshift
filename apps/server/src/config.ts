@@ -76,6 +76,15 @@ const envSchema = z.object({
   NIGHTSHIFT_TOKENS: jsonArray(tokenEntrySchema),
   NIGHTSHIFT_INGEST_TOKENS: jsonArray(ingestTokenEntrySchema),
   GITHUB_TOKEN: optional(z.string().min(1).optional()),
+  ALERTMANAGER_WEBHOOK_TOKEN: optional(z.string().min(24, 'at least 24 characters').optional()),
+  TELEGRAM_BOT_TOKEN: optional(z.string().min(1).optional()),
+  TELEGRAM_CHAT_ID: optional(
+    z
+      .string()
+      .regex(/^-?\d{1,20}$/, 'a numeric chat id')
+      .optional(),
+  ),
+  TELEGRAM_API_URL: optional(z.string().url().default('https://api.telegram.org')),
   AUTH_FAIL_LIMIT: optional(z.coerce.number().int().min(1).max(10_000).default(20)),
   AUTH_FAIL_WINDOW_MINUTES: optional(
     z.coerce
@@ -105,6 +114,10 @@ export interface Config {
   ingestTokens: IngestTokenEntry[];
   /** For services whose deploys come from GitHub. Secret: never log. */
   githubToken: string | undefined;
+  /** Bearer token Alertmanager sends to /webhooks/alertmanager. Secret: never log. */
+  alertmanagerWebhookToken: string | undefined;
+  /** Telegram push target. Secrets: never log. */
+  telegram: { botToken: string; chatId: string; apiUrl: string } | undefined;
   authFailLimit: number;
   authFailWindowMs: number;
   databaseUrl: string | undefined;
@@ -140,6 +153,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     tokens: e.NIGHTSHIFT_TOKENS,
     ingestTokens: e.NIGHTSHIFT_INGEST_TOKENS,
     githubToken: e.GITHUB_TOKEN,
+    alertmanagerWebhookToken: e.ALERTMANAGER_WEBHOOK_TOKEN,
+    telegram:
+      e.TELEGRAM_BOT_TOKEN && e.TELEGRAM_CHAT_ID
+        ? {
+            botToken: e.TELEGRAM_BOT_TOKEN,
+            chatId: e.TELEGRAM_CHAT_ID,
+            apiUrl: e.TELEGRAM_API_URL.replace(/\/+$/, ''),
+          }
+        : undefined,
     authFailLimit: e.AUTH_FAIL_LIMIT,
     authFailWindowMs: e.AUTH_FAIL_WINDOW_MINUTES * 60_000,
     databaseUrl: e.DATABASE_URL,

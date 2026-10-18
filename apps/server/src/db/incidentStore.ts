@@ -23,7 +23,9 @@ export type IncidentEventKind =
   | 'deploy'
   | 'resolved'
   /** Provider routing changed outside Nightshift (detected, not performed). */
-  | 'routing';
+  | 'routing'
+  /** On-call was notified (Telegram) about an alert. */
+  | 'notification';
 
 export interface IncidentEventInput {
   kind: IncidentEventKind;

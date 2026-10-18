@@ -22,6 +22,9 @@ import type { ToolDefinition, ToolDeps } from '../tools/types.js';
 import { SERVER_VERSION } from '../version.js';
 import { AuthFailureLimiter, authFailureGuard } from '../lib/authFailureLimiter.js';
 import { log } from '../lib/log.js';
+import { NotificationGate } from '../domain/alerts/notifications.js';
+import { noopNotifier, type Notifier } from '../notify/notifier.js';
+import { alertWebhookHandler } from './alertWebhook.js';
 import { deployIngestHandler } from './deployIngest.js';
 import { jsonRpcError } from './jsonRpcError.js';
 import { originGuard } from './originGuard.js';
@@ -36,6 +39,8 @@ export interface AppDeps {
   deps: ExternalToolDeps;
   /** Where POST /events/deploy stores deploys. */
   deployStore: DeployStore;
+  /** Push channel for Alertmanager webhooks (default: none). */
+  notifier?: Notifier;
   /** Defaults to every registered tool; tests may inject extra tools. */
   tools?: readonly ToolDefinition[];
   now?: () => number;
@@ -63,6 +68,7 @@ export function createApp({
   config,
   deps,
   deployStore,
+  notifier = noopNotifier,
   tools = TOOLS,
   now = Date.now,
 }: AppDeps): NightshiftApp {
@@ -166,6 +172,23 @@ export function createApp({
       tokens: config.ingestTokens,
       store: deployStore,
       services: deps.services,
+      audit: deps.audit,
+      now: () => new Date(now()),
+    }),
+  );
+
+  // Alertmanager → push notifications: same guards, its own shared bearer token.
+  if (host) app.use('/webhooks', host);
+  app.use('/webhooks', originGuard(config.allowedOrigins));
+  app.use('/webhooks', authFailureGuard(authFailures));
+  app.post(
+    '/webhooks/alertmanager',
+    alertWebhookHandler({
+      token: config.alertmanagerWebhookToken,
+      notifier,
+      gate: new NotificationGate(),
+      services: deps.services,
+      incidents: deps.incidents,
       audit: deps.audit,
       now: () => new Date(now()),
     }),
