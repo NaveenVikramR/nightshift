@@ -1,0 +1,20 @@
+# PRODUCTION Alertmanager (infra/docker-compose.prod.yml): firing and resolved
+# alerts go to Nightshift, which pushes them to Telegram. The bearer token is
+# read from a mounted secret file (Alertmanager has no env substitution).
+route:
+  receiver: nightshift
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: nightshift
+    webhook_configs:
+      - url: http://nightshift:3000/webhooks/alertmanager
+        send_resolved: true
+        max_alerts: 20
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager-secrets/webhook_token

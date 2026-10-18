@@ -1,0 +1,49 @@
+# Public edge for Nightshift (infra/docker-compose.prod.yml). Automatic HTTPS
+# for {$DOMAIN} (Let's Encrypt). Only Caddy publishes ports; Prometheus and
+# Alertmanager are never routed.
+{
+	email {$ACME_EMAIL}
+}
+
+(security_headers) {
+	header {
+		# defer: also applied after the upstream answered, so -Server really removes it.
+		defer
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+		-X-Powered-By
+	}
+}
+
+{$DOMAIN} {
+	import security_headers
+
+	# Nightshift: MCP (Streamable HTTP, so no buffering), health, deploy ingest, alert webhook.
+	@nightshift path /mcp /healthz /events/deploy /webhooks/alertmanager
+	handle @nightshift {
+		reverse_proxy nightshift:3000 {
+			flush_interval -1
+		}
+	}
+
+	# Demo chaos for judges: /demo/<x> → demo-target /admin/<x>. demo-target still
+	# requires its admin bearer token on every call.
+	handle_path /demo/* {
+		rewrite * /admin{uri}
+		reverse_proxy demo-target:8080
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+
+	# Errors (e.g. 502 while nightshift restarts) get the same headers and no details.
+	handle_errors {
+		import security_headers
+		respond "{err.status_code}" {err.status_code}
+	}
+}

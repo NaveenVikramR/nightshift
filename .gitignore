@@ -8,6 +8,7 @@ coverage/
 *.tsbuildinfo
 
 # Environment and secrets — never commit
+infra/secrets/
 .env
 .env.*
 !.env.example

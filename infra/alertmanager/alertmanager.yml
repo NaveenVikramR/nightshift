@@ -1,11 +1,31 @@
-# Alerts are grouped and held here; Nightshift reads them through the v2 API.
-# Push notifications (Telegram via Nightshift webhook) are added later.
+# LOCAL Alertmanager (infra/docker-compose.yml). Nightshift reads alerts through
+# the v2 API, and alerts are also pushed to the local Nightshift dev server
+# (host.docker.internal:3000) for Telegram notifications. The bearer token file
+# is created by `npm run stack:up` (infra/scripts/ensure-secrets.mjs) and the
+# same value is put in apps/server/.env as ALERTMANAGER_WEBHOOK_TOKEN.
 route:
-  receiver: 'null'
+  receiver: nightshift
   group_by: ['alertname', 'service']
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 1h
 
 receivers:
-  - name: 'null'
+  - name: nightshift
+    webhook_configs:
+      - url: http://host.docker.internal:3000/webhooks/alertmanager
+        send_resolved: true
+        max_alerts: 20
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager-secrets/webhook_token
+      # Only listening while `npm run test:integration` runs (alertWebhook.int.test.ts);
+      # failed deliveries to it otherwise are expected and harmless.
+      - url: http://host.docker.internal:3999/webhooks/alertmanager
+        send_resolved: true
+        max_alerts: 20
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager-secrets/webhook_token

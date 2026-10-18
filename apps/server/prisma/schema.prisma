@@ -2,8 +2,12 @@
 // extend them as features land. Generated client: src/generated/prisma (gitignored).
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  // Explicit, so the output doesn't depend on whether a tsconfig is present at generate time
+  // (in the Docker build, `npm ci` generates before tsconfig is copied; FL-15).
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {

@@ -1,0 +1,15 @@
+# Build context is the repo root (the lockfile lives here). Keep secrets and
+# build output out of every image.
+**/node_modules
+**/dist
+**/coverage
+.git
+.github
+.claude
+**/.env
+**/.env.*
+!**/.env.example
+infra/secrets
+apps/server/src/generated
+**/*.log
+docs

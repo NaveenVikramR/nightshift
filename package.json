@@ -24,7 +24,7 @@
     "format:check": "prettier --check .",
     "seed": "npm run seed -w @nightshift/server",
     "token:new": "npm run token:new -w @nightshift/server",
-    "stack:up": "docker compose -f infra/docker-compose.yml up -d --build --wait",
+    "stack:up": "node infra/scripts/ensure-secrets.mjs && docker compose -f infra/docker-compose.yml up -d --build --wait",
     "stack:down": "docker compose -f infra/docker-compose.yml down",
     "stack:logs": "docker compose -f infra/docker-compose.yml logs -f --tail=100",
     "stack:check": "node infra/scripts/check-config.mjs",

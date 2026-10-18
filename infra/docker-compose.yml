@@ -6,7 +6,8 @@ name: nightshift
 services:
   demo-target:
     build:
-      context: ../apps/demo-target
+      context: ..
+      dockerfile: apps/demo-target/Dockerfile
     environment:
       PORT: '8080'
       DEMO_ADMIN_TOKEN: ${DEMO_ADMIN_TOKEN:?set DEMO_ADMIN_TOKEN in infra/.env}
@@ -43,7 +44,10 @@ services:
       - --storage.path=/alertmanager
     volumes:
       - ./alertmanager:/etc/alertmanager:ro
+      - ./secrets/alertmanager:/etc/alertmanager-secrets:ro
       - alertmanager-data:/alertmanager
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - '127.0.0.1:9093:9093'
     healthcheck:

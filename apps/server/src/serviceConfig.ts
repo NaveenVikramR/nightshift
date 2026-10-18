@@ -245,5 +245,25 @@ function applyEnvOverrides(raw: unknown, env: NodeJS.ProcessEnv): unknown {
   };
   override('prometheus', env['PROMETHEUS_URL']);
   override('alertmanager', env['ALERTMANAGER_URL']);
+
+  // SECURITY_DOMAIN: the public domain this deployment serves (prod). Adds its
+  // TLS certificate and its response headers to the security allowlist, so the
+  // committed config doesn't hard-code anyone's domain.
+  const domain = env['SECURITY_DOMAIN']?.trim();
+  if (domain) {
+    const sec =
+      typeof out['security'] === 'object' && out['security'] !== null
+        ? (out['security'] as Record<string, unknown>)
+        : {};
+    const list = (k: string) => (Array.isArray(sec[k]) ? (sec[k] as unknown[]) : []);
+    out['security'] = {
+      ...sec,
+      headers: [
+        ...list('headers'),
+        { name: 'Nightshift public endpoint', url: `https://${domain}/healthz` },
+      ],
+      tls: [...list('tls'), { name: 'Nightshift public endpoint', host: domain, port: 443 }],
+    };
+  }
   return out;
 }

@@ -30,5 +30,6 @@ run([
   'prom/alertmanager:v0.34.1',
   'check-config',
   '/etc/alertmanager/alertmanager.yml',
+  '/etc/alertmanager/alertmanager.prod.yml',
 ]);
 console.log('Prometheus and Alertmanager configs are valid.');

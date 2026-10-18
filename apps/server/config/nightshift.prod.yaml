@@ -1,0 +1,101 @@
+# PRODUCTION catalog (infra/docker-compose.prod.yml): in-network hostnames.
+# The public domain is added to the security allowlist via SECURITY_DOMAIN.
+#
+# Nightshift service catalog. Validated at startup (src/serviceConfig.ts).
+# Plugging in another app (e.g. TruePay) means editing THIS file only:
+# point the URLs at its Prometheus/Alertmanager and write PromQL per signal.
+#
+# Env overrides (for deployment): PROMETHEUS_URL, ALERTMANAGER_URL.
+
+prometheus:
+  url: http://prometheus:9090
+  timeoutMs: 5000
+
+alertmanager:
+  url: http://alertmanager:9093
+  timeoutMs: 5000
+
+services:
+  - name: payments-api # must match the `service` label on alerts
+    displayName: payments API # what Nightshift says out loud
+    aliases: [payments, payment api, payment service, payments service, checkout]
+    queries:
+      # Each query must return a single number (instant vector with one series).
+      errorRate: >-
+        sum(rate(http_requests_total{service="payments-api",status=~"5.."}[1m]))
+        / clamp_min(sum(rate(http_requests_total{service="payments-api"}[1m])), 1e-9)
+      latencyP95: >-
+        histogram_quantile(0.95,
+        sum by (le) (rate(http_request_duration_seconds_bucket{service="payments-api"}[1m])))
+      throughput: sum(rate(http_requests_total{service="payments-api"}[1m]))
+      # Short window for checking an action's effect (scrape is 5 s, so 15 s = 3 samples).
+      verifyErrorRate: >-
+        sum(rate(http_requests_total{service="payments-api",status=~"5.."}[15s]))
+        / clamp_min(sum(rate(http_requests_total{service="payments-api"}[15s])), 1e-9)
+      # One series per dependency; value 0 closed, 1 open, 2 half-open.
+      breakers: circuit_breaker_state{service="payments-api"}
+      # Security signals (per second). Optional.
+      authFailures: sum(rate(auth_failures_total{service="payments-api"}[1m]))
+      # Which provider receives traffic (value 1; label from breakerLabel). Optional.
+      activeProvider: payment_provider_active{service="payments-api"} == 1
+    breakerLabel: provider
+    thresholds:
+      errorRate: 0.05 # ratio, 0-1
+      latencyP95Seconds: 1.0
+      authFailuresPerSecond: 2
+    # Where deploys come from: `ingest` (CI POSTs to /events/deploy) or
+    # `github` (deployments API; needs GITHUB_TOKEN), e.g.
+    #   deploys: { source: github, repo: owner/name, environment: production }
+    deploys:
+      source: ingest
+      environment: production
+    # Remediations Nightshift may perform here (two-phase confirmed). Anything
+    # not listed is refused. Executors are defined at the bottom of this file.
+    actions:
+      failover_provider: { executor: demo-admin, providers: [razorpay, stripe] }
+      rollback_deploy: { executor: demo-admin }
+      restart_service: { executor: demo-admin }
+
+  - name: webhook-receiver
+    displayName: webhook receiver
+    aliases: [webhooks, webhook, payment webhooks, webhook service]
+    queries:
+      errorRate: >-
+        sum(rate(http_requests_total{service="webhook-receiver",status=~"5.."}[1m]))
+        / clamp_min(sum(rate(http_requests_total{service="webhook-receiver"}[1m])), 1e-9)
+      latencyP95: >-
+        histogram_quantile(0.95,
+        sum by (le) (rate(http_request_duration_seconds_bucket{service="webhook-receiver"}[1m])))
+      throughput: sum(rate(http_requests_total{service="webhook-receiver"}[1m]))
+      webhookFailures: sum(rate(webhook_signature_failures_total{service="webhook-receiver"}[1m]))
+    thresholds:
+      errorRate: 0.05
+      latencyP95Seconds: 1.0
+      webhookFailuresPerSecond: 0.5
+    deploys:
+      source: ingest
+      environment: production
+
+# Who performs actions. Secrets are referenced by env var name only.
+#   admin_api:       the Nightshift admin API contract (see README "Safety model")
+#   github_workflow: rollback_deploy via workflow_dispatch, e.g.
+#     gh-rollback: { type: github_workflow, repo: owner/name, workflow: rollback.yml, ref: main, tokenEnv: GITHUB_TOKEN }
+executors:
+  demo-admin:
+    type: admin_api
+    url: http://demo-target:8080
+    tokenEnv: DEMO_ADMIN_TOKEN
+
+# How clock times are spoken ("the 2:41 deploy"). IANA zone; default UTC.
+display:
+  timeZone: Asia/Kolkata
+
+# What run_security_scan may check. Nothing else is ever scanned (no discovery,
+# no port scanning). Prometheus security signals come from each service's
+# authFailures / webhookFailures queries above.
+security:
+  headers:
+    - { name: payments API, url: http://demo-target:8080/ }
+  tls: [] # e.g. { name: payments API, host: pay.example.com, port: 443 } after the public deploy
+  repos: [] # e.g. owner/name: Dependabot + secret-scanning alerts (needs GITHUB_TOKEN)
+  scanTimeoutMs: 8000
