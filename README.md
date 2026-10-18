@@ -4,9 +4,10 @@ Nightshift is a voice on-call and security copilot for small engineering teams: 
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
 take safe, explicitly confirmed actions.
 
-> Status: **Day 5.** All 13 tools: ops brief, alerts, health, deploys, grounded incident diagnosis,
+> Status: **Day 6.** All 13 tools: ops brief, alerts, health, deploys, grounded incident diagnosis,
 > ack and silence, two-phase remediation (fail over, roll back, restart), security posture (scan +
-> findings), incident timeline with a postmortem draft, and notes. Public deployment is next.
+> findings), incident timeline with a postmortem draft, and notes. Proactive Telegram alerts,
+> a containerised production stack (Caddy + automatic HTTPS) and CI.
 
 ## Prerequisites
 
@@ -291,6 +292,78 @@ Claude Code) negotiate exactly that, and a client that asks for a newer revision
 accepts older revisions (2025-06-18, 2025-03-26, 2024-11-05, 2024-10-07) during `initialize` and
 in the `MCP-Protocol-Version` header, so older clients keep working. Any other value gets 400.
 
+## Proactive alerts (Telegram)
+
+An MCP server can't make Alexa speak unprompted, so pushes go to the phone instead:
+
+```
+Prometheus rule fires → Alertmanager → POST /webhooks/alertmanager → Nightshift → Telegram
+"🔴 Critical: high error rate on payments API. Ask Alexa: what's wrong?"
+"✅ Resolved: high error rate on payments API."
+```
+
+- **Auth:** Alertmanager sends a dedicated bearer token (`ALERTMANAGER_WEBHOOK_TOKEN`, read
+  from a mounted `credentials_file`). User tokens and deploy-ingest tokens are rejected. Host,
+  Origin and failed-auth limits are the same as on `/mcp`. Every delivery gets an audit row.
+- **Untrusted input:** the payload is zod-validated. The message is written by Nightshift from
+  the sanitized alert name and service only. Annotation text and links are never forwarded.
+- **Noise control:** a repeat of the same alert and status is skipped, and there is at most one
+  message per alert and status per 5 minutes. A failed push isn't recorded, so the next delivery
+  retries it.
+- **Incident record:** when an incident is open for the service, the push is added to its
+  timeline ("notified on-call").
+- **Configuration:** set `TELEGRAM_BOT_TOKEN` (from @BotFather) and `TELEGRAM_CHAT_ID`. Without
+  them the server starts with a warning and doesn't push.
+- **Local setup:** `npm run stack:up` creates the shared token. The local Alertmanager posts to
+  `host.docker.internal:3000`, so add `host.docker.internal` to `ALLOWED_HOSTS`.
+
+## Try it (judges)
+
+The public endpoint is `https://<your-domain>/mcp`. Testing tokens are given in the submission
+form; they are not in this repo.
+
+```bash
+claude mcp add --transport http nightshift-prod https://<your-domain>/mcp \
+  --header "Authorization: Bearer <judge-responder-token>"
+claude mcp get nightshift-prod     # → Connected
+```
+
+Then ask, as you would ask Alexa:
+
+1. "Give me the ops brief."
+2. Break the demo service:
+   `curl -X POST -H "Authorization: Bearer <demo-admin-token>" https://<your-domain>/demo/chaos/provider_outage`
+   A Telegram alert follows within about a minute.
+3. "What's wrong?" → a grounded diagnosis: the Razorpay breaker is open, and a failover is
+   suggested.
+4. "Fail over to Stripe." → Nightshift asks for confirmation. Say "yes" → it executes and checks
+   that the errors recover.
+5. "Show me the incident timeline." / "Add a note: customer emails sent."
+6. "Run a security scan." → a grade from A to F, with findings for the public endpoint's TLS and
+   headers.
+7. Reset: `curl -X POST -H "Authorization: Bearer <demo-admin-token>" https://<your-domain>/demo/reset`
+
+A `viewer` token can read everything, but every write tool refuses it.
+
+## What's new vs pre-existing
+
+| Part                                                                                                                    | Status                                  |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Nightshift MCP server (`apps/server`): tools, correlation engine, two-phase actions, posture scanner, webhook, notifier | **New** for this hackathon              |
+| Demo target (`apps/demo-target`), Prometheus rules, Alertmanager config, Caddy, prod compose, deploy scripts, CI        | **New**                                 |
+| TruePay (the payments app whose metrics the demo target mimics)                                                         | Pre-existing; only the monitored target |
+| MCP TypeScript SDK, Prisma, Express, Prometheus, Alertmanager, Caddy                                                    | Third-party, used as published          |
+
+Nightshift has no TruePay-specific code: services, PromQL and executors are all configured in
+`apps/server/config/nightshift.yaml`.
+
+## CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request:
+
+- Prettier, ESLint, `tsc` and all unit tests (no network or database);
+- gitleaks over the full git history.
+
 ## Deployment notes
 
 - **Run exactly one instance.** MCP sessions and the failed-auth counters live in process memory.
@@ -298,6 +371,56 @@ in the `MCP-Protocol-Version` header, so older clients keep working. Any other v
   the session and get 404. Scale up, not out (or add a shared session store first).
 - Behind a reverse proxy, set `TRUST_PROXY=true` so rate limiting sees real client IPs, set
   `HOST=0.0.0.0`, and set `ALLOWED_HOSTS` to your public hostname.
+
+## Deploy to EC2 (single instance, automatic HTTPS)
+
+`infra/docker-compose.prod.yml` runs five containers on one host:
+
+- `caddy` is the **only** container that publishes ports (80/443). It gets a Let's Encrypt
+  certificate and sets HSTS, CSP, nosniff, `X-Frame-Options` and `Referrer-Policy`.
+- `nightshift` serves `/mcp`, `/healthz`, `/events/deploy` and `/webhooks/alertmanager`.
+- `demo-target`'s admin API is exposed only as `/demo/*`, and still needs its bearer token.
+- `prometheus` and `alertmanager` stay on the internal network.
+- Anything else gets 404.
+
+Secrets live in `/opt/nightshift/env/*.env` (chmod 600), outside the repo.
+
+1. **EC2:** Ubuntu 24.04, t3.micro. The security group allows 22 from your IP only, plus 80 and
+   443 from anywhere.
+2. **DuckDNS:** create a subdomain and copy the token.
+3. **Telegram:** create a bot with @BotFather and copy its token. Message the bot, then read your
+   chat id from `https://api.telegram.org/bot<token>/getUpdates`.
+4. **Neon:** create a new branch or database for prod. Copy the pooled and direct URLs.
+5. **Tokens:** on your laptop, run `npm run token:new -- <actor> responder` (and `viewer`). Keep
+   the plaintext tokens. Only the printed sha256 entries go on the server.
+6. On the server:
+
+   ```bash
+   curl -fsSLO https://raw.githubusercontent.com/<owner>/<repo>/main/infra/deploy/bootstrap.sh
+   sudo bash bootstrap.sh https://github.com/<owner>/<repo>.git <sub>.duckdns.org
+   # log out and in (docker group), then fill the empty values:
+   nano /opt/nightshift/env/nightshift.env   # tokens, Neon URLs, Telegram
+   nano /opt/nightshift/env/caddy.env        # ACME_EMAIL
+   nano /opt/nightshift/env/duckdns.env      # DUCKDNS_TOKEN
+   sudo /opt/nightshift/app/infra/deploy/duckdns.sh   # point DNS at this host
+   /opt/nightshift/app/infra/deploy/up.sh             # build, migrate, start, health check
+   ```
+
+   What the scripts do:
+
+   - `bootstrap.sh` installs Docker from the official apt repo and adds 1 GB of swap when RAM is
+     under 2 GB. It clones to `/opt/nightshift/app` and creates the env files from
+     [`infra/deploy/env/`](infra/deploy/env/). The demo admin token and Alertmanager webhook token
+     are generated randomly and never printed. It also installs a DuckDNS cron job (every 5 min).
+   - `up.sh` lists by name any settings that are still empty. It writes Alertmanager's credentials
+     file, readable only by Alertmanager's user. It builds the images one at a time, so 1 GB is
+     enough. Then it runs `prisma migrate deploy` and waits for `https://<domain>/healthz`.
+
+7. **Updates:** `/opt/nightshift/app/infra/deploy/update.sh` runs `git pull --ff-only`, then
+   `up.sh`.
+8. **Uptime:** set the repository variable `NIGHTSHIFT_URL`.
+   [`uptime.yml`](.github/workflows/uptime.yml) curls `/healthz` every 30 minutes, and a failure
+   emails the repository owner.
 
 ## Repository layout
 
@@ -309,11 +432,14 @@ apps/server/          Nightshift MCP server (this is the submission's new work)
   src/domain/         pure business logic (alerts, health, service resolution, spoken text)
   src/clients/        Prometheus + Alertmanager HTTP clients (typed errors)
   src/lib/            auth, roles, audit, rate limiting, untrusted-text handling, logging
+  src/notify/         Notifier interface + Telegram
   src/db/             Prisma client, audit sink, ack/silence stores
   config/             nightshift.yaml service catalog
   prisma/             schema, migrations, seed
 apps/demo-target/     simulated payments API with Prometheus metrics and chaos switches
-infra/                docker compose: demo-target, Prometheus, Alertmanager + alert rules
+infra/                docker compose (local + prod), Prometheus rules, Alertmanager, Caddy
+  deploy/             EC2 bootstrap, update and DuckDNS scripts
+.github/workflows/    CI (lint, typecheck, tests, gitleaks) and the uptime check
 apps/alexa-sim/       (coming) simulated Alexa+ client
 packages/mcp-prometheus-tools/  (coming) reusable OSS package
 docs/                 friction log, product feedback

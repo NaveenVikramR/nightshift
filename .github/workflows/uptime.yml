@@ -1,0 +1,35 @@
+name: Uptime
+
+# Checks the public deployment every 30 minutes. A failed run emails the
+# workflow owner (GitHub's default notification for failed scheduled runs).
+# Set the repository variable NIGHTSHIFT_URL (Settings > Variables), e.g.
+# https://nightshift-demo.duckdns.org
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  healthz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: GET /healthz
+        env:
+          BASE_URL: ${{ vars.NIGHTSHIFT_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "::warning::repository variable NIGHTSHIFT_URL is not set; skipping"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            body=$(curl -fsS --max-time 20 "$BASE_URL/healthz") && [ "$body" = ok ] && {
+              echo "healthy (attempt $attempt)"
+              exit 0
+            }
+            sleep 20
+          done
+          echo "::error::$BASE_URL/healthz is not answering ok"
+          exit 1
