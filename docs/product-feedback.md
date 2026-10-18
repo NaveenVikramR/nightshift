@@ -111,14 +111,18 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **Onboarding:** About 30 minutes, including the compose stack.
 - **Would I build with it again?** Yes.
 
-## Alertmanager 0.34 (API v2)
+## Alertmanager 0.34 (API v2, webhook receiver)
 
-- **What I used it for:** Listing active alerts, and creating silences for `silence_alert`.
+- **What I used it for:** Listing active alerts, creating silences for `silence_alert`, and
+  pushing firing/resolved alerts to Nightshift (`webhook_configs`), which forwards them to Telegram.
 - **What worked well:** Fingerprints are stable, silences are easy to create, and `silencedBy` makes
   state obvious.
 - **What needs work:** There's no acknowledgement concept, so ack lives in our database. Alert
   annotations are free text that the API passes through unescaped, and we must treat them as
-  untrusted.
+  untrusted. The config has no env substitution, so the webhook bearer must come from a
+  `credentials_file`. Mounting that secret inside the read-only config mount fails (FL-17).
+  The `alertmanager_notifications_failed_total{reason="authError"}` metric made a 403 from our
+  Host guard easy to spot, though.
 - **Onboarding:** About 15 minutes.
 - **Would I build with it again?** Yes.
 
@@ -135,6 +139,9 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **What needs work:**
   - npm `latest` is an RC, and the update notifier pushes it (FL-02).
   - The config file was renamed (`prisma7.config.ts`) without clear docs (FL-03).
+  - The generator's import extensions depend on whether a tsconfig exists at generate time, which
+    broke the Docker image (FL-15).
+  - With `adapter-pg`, a query against a refused port hangs and blocks the event loop (FL-16).
   - `npm audit` reports 4 high-severity advisories through the CLI's own dependencies
     (`mysql2`, `deepmerge-ts` via `@prisma/config`); the suggested fix downgrades to Prisma 6.
     These are dev-time only for a Postgres project, but noisy.
@@ -152,9 +159,29 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
   - After the disk image location changed, Docker ran on a new empty disk with no warning, so the
     stack looked deleted (FL-10).
   - The engine hung when the C: drive filled up, with no clear error.
+  - From Git Bash, container paths in `docker run` arguments get rewritten (FL-19).
 - **Onboarding:** Already installed; writing the compose stack took about 30 minutes.
 - **Would I build with it again?** Yes for local stacks, but I now run `npm run stack:status`
   before trusting it.
+
+## Caddy 2.8.4 (reverse proxy, automatic HTTPS)
+
+- **What I used it for:** The only public entry point of the production stack. It provides:
+  - Let's Encrypt TLS for the DuckDNS domain;
+  - routing: `/mcp` (SSE, `flush_interval -1`) and the webhook paths to Nightshift, `/demo/*` to
+    the demo target's admin API, and 404 for everything else;
+  - security headers.
+- **What worked well:**
+  - A whole edge in about 40 lines.
+  - `{$ENV}` placeholders keep the domain out of git.
+  - `caddy validate` in the official image checks the config offline.
+  - Locally, `DOMAIN=localhost` gets a certificate from Caddy's internal CA, so the real
+    Caddyfile can be smoke-tested.
+- **What needs work:** Security headers don't apply to error responses, and `-Server` needs
+  `defer` (FL-18).
+- **Onboarding:** About 30 minutes, including the header fix.
+- **Would I build with it again?** Yes. Automatic HTTPS with no certbot cron is exactly right
+  for a single-instance deployment.
 
 ## AWS services
 

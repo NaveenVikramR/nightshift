@@ -203,3 +203,84 @@
 - **Time lost:** ~5 minutes
 - **Workaround:** `node --test "infra/scripts/*.test.mjs"` (quoted so the shell doesn't expand it).
 - **Suggestion:** When a positional argument is a directory, print "directories are not supported; pass a glob such as dir/**/*.test.mjs" instead of reporting a failed test.
+
+## FL-15: Prisma's `prisma-client` generator picks import extensions from whether a tsconfig exists
+
+- **Date:** 2026-10-18
+- **Product / tool:** Prisma ORM 7.10.0 (`prisma-client` generator), Docker multi-stage build
+- **Task attempted:** Run the compiled server (`node dist/index.js`) in a production Docker image.
+- **Steps taken:**
+  1. In the build stage, copied `package.json` files and `prisma/` first, then ran `npm ci` (its postinstall runs `prisma generate`) so the dependency layer is cached.
+  2. Copied `src/` and the tsconfig files, then ran `tsc`.
+  3. Started the runtime image.
+- **Expected:** The same generated client as on my machine, where it imports `./enums.js`.
+- **Actual:** The container crashed at startup: `ERR_MODULE_NOT_FOUND … url: 'file:///app/apps/server/dist/generated/prisma/enums.ts'`. With no tsconfig present when `prisma generate` ran, the generator emitted `.ts` import specifiers. `tsc` then copied them unchanged into `dist`. Nothing failed at build time.
+- **Severity:** High
+- **Time lost:** ~40 minutes (including slow image rebuilds)
+- **Workaround:** Set `moduleFormat = "esm"` and `importFileExtension = "js"` explicitly in the `generator client` block, so the output no longer depends on the environment.
+- **Suggestion:** Make the generator's output deterministic by default, or at least log the inferred `moduleFormat` / `importFileExtension` (and where they came from) on every `prisma generate`. Add a "Docker / CI builds" note to the generator docs.
+
+## FL-16: Prisma 7.10 with `@prisma/adapter-pg` hangs and blocks the event loop when Postgres refuses the connection
+
+- **Date:** 2026-10-18
+- **Product / tool:** Prisma ORM 7.10.0 + `@prisma/adapter-pg` 7.10.0 (pg 8.23.1), Node 24
+- **Task attempted:** Fail fast at startup when the database is unreachable (`SELECT 1` health check).
+- **Steps taken:**
+  1. `new PrismaClient({ adapter: new PrismaPg({ connectionString }) })`, then ``await db.$queryRaw`SELECT 1` ``.
+  2. Pointed `DATABASE_URL` at a port with nothing listening (`postgresql://u:p@127.0.0.1:1/x`).
+  3. Added a 20 s `setTimeout` watchdog.
+- **Expected:** A rejected promise within a second (connection refused).
+- **Actual:**
+  - The promise never settled and the watchdog timer never fired, so the event loop was blocked.
+  - In the container the process used ~100% CPU, logged nothing, never opened its port, and the healthcheck failed.
+  - With the same URL, plain `pg.Pool().query()` rejects in 8 ms with `ECONNREFUSED`. An unknown hostname makes Prisma reject in ~0.5 s.
+- **Severity:** High (on a 1 GB instance, one refused connection pins the CPU)
+- **Time lost:** ~45 minutes
+- **Workaround:** `probeDatabase()`: a plain `pg.Client` connect + `SELECT 1` with `connectionTimeoutMillis` runs before the Prisma client is created. Startup now exits with "Can't reach the database at DATABASE_URL" and Docker restarts the container with backoff. A refusal during runtime is still unprotected.
+- **Suggestion:** Treat `ECONNREFUSED` from the driver adapter as a terminal connection error (a P1001-style error) instead of retrying in a tight loop. Add a regression test with an unreachable port.
+
+## FL-17: Alertmanager has no env substitution, and a secret mount inside the config mount fails
+
+- **Date:** 2026-10-17
+- **Product / tool:** Prometheus Alertmanager 0.34.1 (Docker image), Docker Compose
+- **Task attempted:** Give Alertmanager's webhook receiver a bearer token without committing it.
+- **Steps taken:**
+  1. Looked for `${ENV}` support in `alertmanager.yml`. There is none, so I used `http_config.authorization.credentials_file`.
+  2. Mounted the config dir read-only (`./alertmanager:/etc/alertmanager:ro`) and the secret dir at `/etc/alertmanager/secrets:ro`.
+- **Expected:** Both mounts work. Nested bind mounts are common.
+- **Actual:** `error mounting ".../infra/secrets/alertmanager" to rootfs at "/etc/alertmanager/secrets": … mkdirat …/etc/alertmanager/secrets: read-only file system`. The mountpoint has to be created inside the read-only parent mount.
+- **Severity:** Medium
+- **Time lost:** ~20 minutes
+- **Workaround:**
+  - Mount secrets at a sibling path, `/etc/alertmanager-secrets`.
+  - The prod file is `root:65534` mode 0440, since the image runs as `nobody`.
+  - A setup script keeps the token file and the server's env var in sync.
+- **Suggestion:** In the webhook receiver docs, add a full `credentials_file` example with a Docker/Kubernetes secret mount. Mention that the image runs as `nobody` (uid 65534), so the file must be readable by that uid.
+
+## FL-18: Caddy `header` doesn't touch error responses, and `-Server` needs `defer`
+
+- **Date:** 2026-10-18
+- **Product / tool:** Caddy 2.8.4 (Caddyfile `header`, `reverse_proxy`)
+- **Task attempted:** Send HSTS, CSP, nosniff, X-Frame-Options and Referrer-Policy, and no `Server` header, on every response.
+- **Steps taken:**
+  1. Added a site-wide `header { Strict-Transport-Security …; -Server }` block.
+  2. Smoke-tested with `curl -kI https://localhost/healthz` while the upstream was down.
+- **Expected:** The same headers on every response, including proxy errors.
+- **Actual:** The 502 responses carried only `Server: Caddy`, with no security headers. Even on success, `Server` remained until `defer` was added. Error responses are generated by the error route, which skips the site's `header` handlers.
+- **Severity:** Medium (a header scan of the endpoint would have failed whenever the backend restarted)
+- **Time lost:** ~20 minutes
+- **Workaround:** A `(security_headers)` snippet with `defer`, imported in the site block and in `handle_errors` (which responds with only the status code).
+- **Suggestion:** In the `header` directive docs, show a "security headers" recipe that covers `defer` for removing `Server`, and say plainly that `handle_errors` needs its own headers.
+
+## FL-19: Git Bash rewrites container paths in `docker run` arguments
+
+- **Date:** 2026-10-17
+- **Product / tool:** Git for Windows (MSYS2 bash) + Docker Desktop 4.89
+- **Task attempted:** Validate configs with `docker run … prom/alertmanager amtool check-config /etc/alertmanager/alertmanager.yml`.
+- **Steps taken:** Ran the command from Git Bash on Windows.
+- **Expected:** amtool reads the file inside the container.
+- **Actual:** `amtool: error: path 'C:/Program Files/Git/etc/alertmanager/alertmanager.yml' does not exist`. MSYS converted the POSIX-looking argument into a Windows path before Docker saw it. `docker exec … ls /etc/…` did the same.
+- **Severity:** Low
+- **Time lost:** ~10 minutes
+- **Workaround:** Prefix the command with `MSYS_NO_PATHCONV=1`. Our npm scripts call Docker from Node, which isn't affected.
+- **Suggestion:** Docker docs for Windows could warn about MSYS path conversion in the `docker run` / `exec` pages. Docker Desktop could detect a `C:/Program Files/Git/` prefix in container-path arguments and print a hint.
