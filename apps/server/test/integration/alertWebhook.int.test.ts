@@ -109,7 +109,11 @@ describe('Alertmanager webhook -> Telegram (live)', () => {
     expect(telegram.every((m) => m.chatId === '4242')).toBe(true);
     expect(telegram.map((m) => m.text).join(' ')).not.toMatch(/https?:/);
     const log = process.env['NS_SPEAK_LOG'];
-    if (log) appendFileSync(log, `telegram: ${telegram.map((m) => m.text).join(' | ')}
-`);
+    if (log)
+      appendFileSync(
+        log,
+        `telegram: ${telegram.map((m) => m.text).join(' | ')}
+`,
+      );
   });
 });
