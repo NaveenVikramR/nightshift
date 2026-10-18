@@ -85,7 +85,15 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
 - `npm run test:integration` — live-stack test (needs `npm run stack:up` + `infra/.env`); not in `npm test`
 - `npm run stack:up` / `stack:down` / `stack:logs` — docker compose stack in `infra/`: demo-target
   (host port 18080), Prometheus (9090), Alertmanager (9093), all on 127.0.0.1. Needs Docker + `infra/.env`
-- `npm run stack:check` — validate Prometheus rules (promtool) and Alertmanager config (amtool)
+- `npm run stack:up` also runs `infra/scripts/ensure-secrets.mjs`: creates the gitignored
+  `infra/secrets/alertmanager/webhook_token` and sets `ALERTMANAGER_WEBHOOK_TOKEN` in `apps/server/.env`
+  (local Alertmanager posts to `host.docker.internal:3000`, so add `host.docker.internal` to `ALLOWED_HOSTS`)
+- `npm run stack:check` — validate Prometheus rules (promtool) and both Alertmanager configs (amtool)
+- Production (EC2): `infra/docker-compose.prod.yml` (caddy is the only service publishing ports) with
+  env files in `NIGHTSHIFT_ENV_DIR` (default `/opt/nightshift/env`); scripts in `infra/deploy/`:
+  `bootstrap.sh <repo-url> <domain>` (sudo, once), `up.sh` (validate env → build → migrate → start →
+  healthz), `update.sh` (pull + up), `duckdns.sh` (cron). Local smoke test: point `NIGHTSHIFT_ENV_DIR`
+  at a temp dir built from `infra/deploy/env/*.env.example` with `DOMAIN=localhost`
 - `npm run stack:status` — container health + readiness probes on 18080/9090/9093 (exit 1 if
   down); `test:integration` runs the same probes first and stops with one line if the stack is down
 - `npm run chaos:provider_outage` | `chaos:latency_spike` | `chaos:auth_bruteforce` |
@@ -119,6 +127,16 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
   token (`NIGHTSHIFT_INGEST_TOKENS`; MCP tokens rejected, ingest tokens rejected on `/mcp`) → zod
   body → sanitize → `DeployStore` (idempotent per source + `externalId`). Every request audited
   (role `ingest`, tool `events/deploy`).
+- `POST /webhooks/alertmanager` (`src/http/alertWebhook.ts`): Host → Origin → failed-auth limiter →
+  `ALERTMANAGER_WEBHOOK_TOKEN` bearer (only that token) → zod v4 payload → `toAlertView` →
+  `NotificationGate` (skip same status; 1 per alert+status per 5 min, in memory) → `Notifier`
+  (`src/notify/`: Telegram via `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`, no-op if unset) → `notification`
+  IncidentEvent on the open incident. Audited as actor `alertmanager`, role `ingest`. Messages are
+  server-written from sanitized alertname + service only (never annotations or links).
+- Prod: `ALLOWED_HOSTS` must include `nightshift` (Alertmanager's in-network Host). `SECURITY_DOMAIN`
+  adds `https://<domain>/healthz` headers + TLS to the scan allowlist. Startup runs `probeDatabase`
+  (plain pg) before Prisma: Prisma 7.10 + adapter-pg hangs on a refused connection (FL-16). Prisma
+  generator pins `moduleFormat`/`importFileExtension` (FL-15).
 - Service catalog: `apps/server/config/nightshift.yaml` (path `NIGHTSHIFT_CONFIG`), validated by
   `src/serviceConfig.ts` at startup: Prometheus/Alertmanager URLs (env `PROMETHEUS_URL` /
   `ALERTMANAGER_URL` override), services with aliases + PromQL per signal (incl. optional
@@ -236,7 +254,8 @@ Score 0–100 → grade A–F; store each scan; report deltas vs previous scan.
 ## Proactive alerts
 
 MCP servers cannot make Alexa speak unprompted. Flow: Alertmanager webhook → Nightshift →
-Telegram push ("Critical: … Ask Alexa what's wrong"). Log this limitation in the friction log.
+Telegram push ("🔴 Critical: … Ask Alexa: what's wrong?" / "✅ Resolved: …"). ✅ Day 6, live test
+`test/integration/alertWebhook.int.test.ts` (real Alertmanager → 127.0.0.1:3999 → fake Telegram).
 
 ## Coding conventions
 
