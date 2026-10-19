@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Nightshift — voice on-call copilot</title>
+    <meta
+      name="description"
+      content="Nightshift is a self-hosted MCP server that tells you what's wrong in production, why, and fixes it only after you say yes."
+    />
+    <link rel="stylesheet" href="/site.css" />
+    <script src="/site.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <p class="brand">
+        <svg class="moon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" />
+        </svg>
+        Nightshift
+      </p>
+      <p class="status" id="status" role="status" data-state="checking">
+        <span class="dot" aria-hidden="true"></span><span id="status-text">Checking status…</span>
+      </p>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">Voice on-call &amp; security copilot · MCP server</p>
+        <h1>Ask “what's wrong?” at 3 a.m. Get the answer, not a dashboard.</h1>
+        <p class="lede">
+          Nightshift is a self-hosted MCP server that tells you what's wrong in production, why, and
+          fixes it only after you say yes.
+        </p>
+      </section>
+
+      <section aria-labelledby="how">
+        <h2 id="how">How it works</h2>
+        <ol class="steps">
+          <li class="step">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"
+              />
+              <path d="M12 9v4M12 17h.01" />
+            </svg>
+            <h3><span class="n">1</span> An alert fires</h3>
+            <p>
+              Prometheus and Alertmanager spot errors, latency, a failing provider or a security
+              spike.
+            </p>
+          </li>
+          <li class="step">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="6" y="2" width="12" height="20" rx="2.5" />
+              <path d="M11 18h2" />
+            </svg>
+            <h3><span class="n">2</span> Your phone buzzes</h3>
+            <p>“Critical: high error rate on payments API. Ask Alexa: what's wrong?”</p>
+          </li>
+          <li class="step">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
+            </svg>
+            <h3><span class="n">3</span> “What's wrong?”</h3>
+            <p>
+              A grounded diagnosis from evidence: the Razorpay breaker opened, errors at 45%. Never
+              a guess.
+            </p>
+          </li>
+          <li class="step">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M7.5 12.5l3 3 6-6.5" />
+            </svg>
+            <h3><span class="n">4</span> “Fail over?” — “Yes.”</h3>
+            <p>Two-phase confirmation, then a measured result: errors 45% → 0.5%.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="grid-2" aria-label="Get started">
+        <article class="panel">
+          <h2>Try it</h2>
+          <p>Talk to Nightshift in your browser, like an Echo Show.</p>
+          <p class="soon">
+            <span class="badge">Coming soon</span>
+            <span class="muted">/alexa — a simulated Alexa+ client</span>
+          </p>
+          <img
+            class="preview"
+            src="/preview.png"
+            width="1024"
+            height="620"
+            alt="The Nightshift incident card: critical, Payments API, an error-rate chart and ranked causes with a Fail over to Stripe button."
+          />
+        </article>
+        <article class="panel">
+          <h2>Connect your own MCP client</h2>
+          <p class="muted">Endpoint (Streamable HTTP, MCP 2025-11-25):</p>
+          <p><code id="endpoint">https://&lt;this-host&gt;/mcp</code></p>
+          <p class="muted">Claude Code:</p>
+          <pre><code id="cmd">claude mcp add --transport http nightshift https://&lt;this-host&gt;/mcp --header "Authorization: Bearer &lt;your-token&gt;"</code></pre>
+          <p class="row">
+            <button type="button" id="copy" class="btn">Copy command</button>
+            <span id="copied" class="muted" role="status"></span>
+          </p>
+          <p class="muted small">
+            Tokens are issued per person (viewer or responder). Testing tokens for judges are in the
+            submission.
+          </p>
+        </article>
+      </section>
+
+      <section aria-labelledby="safe">
+        <h2 id="safe">Safe by design</h2>
+        <ul class="facts">
+          <li>
+            <strong>Two-phase actions.</strong> Prepare, hear what will change, say yes, then it
+            runs once.
+          </li>
+          <li>
+            <strong>Allowlisted.</strong> Only fail over, roll back or restart. Scans only
+            configured targets.
+          </li>
+          <li>
+            <strong>Grounded.</strong> Deterministic rules over evidence; weak evidence is said out
+            loud.
+          </li>
+          <li>
+            <strong>Untrusted text is data.</strong> Alert and commit text is quoted, never obeyed.
+          </li>
+          <li><strong>Audited.</strong> Every call is recorded: who, what, when, outcome.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p class="muted small">
+        Nightshift · open source (MIT) · built for the Amazon Alexa+ developer hackathon
+      </p>
+    </footer>
+  </body>
+</html>

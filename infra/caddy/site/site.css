@@ -1,0 +1,305 @@
+/* Same visual language as the MCP Apps cards (apps/server/src/ui/view/styles): dark, like a night-time screen. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0f17;
+  --surface: #141a26;
+  --surface-2: #1b2232;
+  --line: #2a3447;
+  --text: #f2f5fa;
+  --muted: #aab3c3;
+  --focus: #8ec5ff;
+  --crit: #ff6b6b;
+  --warn: #ffbe55;
+  --ok: #45d98a;
+  --info: #79b8ff;
+  --radius: 18px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  font-size: 18px;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+h1,
+h2,
+h3,
+p,
+ol,
+ul,
+pre {
+  margin: 0;
+}
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.top,
+main,
+.foot {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.moon {
+  width: 26px;
+  height: 26px;
+  fill: var(--warn);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+.status .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.status[data-state='ok'] .dot {
+  background: var(--ok);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent);
+}
+.status[data-state='down'] .dot {
+  background: var(--crit);
+}
+
+main {
+  display: grid;
+  gap: 64px;
+  padding-top: 32px;
+  padding-bottom: 64px;
+}
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.hero {
+  display: grid;
+  gap: 18px;
+  max-width: 820px;
+}
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+.lede {
+  font-size: 1.25rem;
+  color: var(--muted);
+  max-width: 680px;
+}
+h2 {
+  font-size: 1.4rem;
+  font-weight: 750;
+  margin-bottom: 18px;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  counter-reset: step;
+}
+.step {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 22px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.step svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: var(--info);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.step:last-child svg {
+  stroke: var(--ok);
+}
+.step:first-child svg {
+  stroke: var(--crit);
+}
+.step h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+}
+.step .n {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 0.85rem;
+}
+.step p {
+  color: var(--muted);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 24px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.panel h2 {
+  margin-bottom: 4px;
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.85rem;
+}
+.soon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 2px solid var(--warn);
+  color: var(--warn);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+code {
+  overflow-wrap: anywhere;
+}
+pre {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.btn {
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 12px;
+  border: 2px solid var(--text);
+  background: var(--text);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px 28px;
+}
+.facts li {
+  padding-left: 18px;
+  border-left: 3px solid var(--ok);
+  color: var(--muted);
+}
+.facts strong {
+  color: var(--text);
+}
+
+.foot {
+  padding-top: 24px;
+  padding-bottom: 40px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 560px) {
+  .top,
+  main,
+  .foot {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .top {
+    flex-wrap: wrap;
+  }
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}

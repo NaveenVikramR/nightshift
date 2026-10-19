@@ -10,7 +10,8 @@
 		# defer: also applied after the upstream answered, so -Server really removes it.
 		defer
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		# Default CSP ("?" = unless a route set its own, like the landing page below).
+		?Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
@@ -35,6 +36,15 @@
 	handle_path /demo/* {
 		rewrite * /admin{uri}
 		reverse_proxy demo-target:8080
+	}
+
+	# Landing page (static, no secrets). Its CSP allows only its own script and
+	# stylesheet and a same-origin fetch of /healthz for the status line.
+	@site path / /index.html /site.css /site.js /preview.png
+	handle @site {
+		header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		root * /srv/site
+		file_server
 	}
 
 	handle {

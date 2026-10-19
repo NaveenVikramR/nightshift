@@ -42,6 +42,21 @@ describe('service config', () => {
     expect(c.alertmanager.url).toBe('https://am.example');
   });
 
+  it('SECURITY_DOMAIN adds the public endpoint and landing page to the scan allowlist', () => {
+    const c = loadServiceConfig('config/nightshift.prod.yaml', {
+      SECURITY_DOMAIN: 'nightshift-demo.duckdns.org',
+    });
+    expect(c.security.headers.map((h) => h.url)).toEqual([
+      'http://demo-target:8080',
+      'https://nightshift-demo.duckdns.org/healthz',
+      'https://nightshift-demo.duckdns.org',
+    ]);
+    expect(c.security.tls).toEqual([
+      expect.objectContaining({ host: 'nightshift-demo.duckdns.org', port: 443 }),
+    ]);
+    expect(loadServiceConfig('config/nightshift.prod.yaml', {}).security.tls).toEqual([]);
+  });
+
   it.each([
     ['no services', { ...minimal, services: [] }],
     ['bad URL scheme', { ...minimal, prometheus: { url: 'file:///etc/passwd' } }],

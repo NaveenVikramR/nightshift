@@ -111,6 +111,13 @@ for (const name of [
 ]) {
   const { page, frame } = await open(name);
   check((await text(frame)).length > 20, `${name}: renders`);
+  if (name === 'incident') {
+    // The landing page preview: the top of the incident card, Echo Show-sized.
+    await page.screenshot({
+      path: join(root, '..', '..', 'infra', 'caddy', 'site', 'preview.png'),
+      clip: { x: 0, y: 0, width: WIDTH, height: 620 },
+    });
+  }
   await shot(page, name);
   await page.close();
 }
@@ -162,6 +169,35 @@ for (const name of ['incident', 'security', 'brief']) {
   check(injected === 0 && pwned === 0, `${name}: injected markup is not rendered`);
   check((await text(frame)).includes('<img src=x'), `${name}: injected text is shown literally`);
   await page.close();
+}
+
+// 5. Optional: the landing page as served by Caddy (LANDING_URL=https://localhost:8443).
+const landing = process.env['LANDING_URL'];
+if (landing) {
+  const ctx = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 2,
+    ignoreHTTPSErrors: true, // Caddy's local CA
+  });
+  const page = await ctx.newPage();
+  const cspViolations: string[] = [];
+  page.on('console', (m) => {
+    if (/Content Security Policy/i.test(m.text())) cspViolations.push(m.text());
+  });
+  // The local Caddy has no Nightshift behind it; answer /healthz like a healthy server.
+  await page.route('**/healthz', (r) =>
+    r.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
+  );
+  await page.goto(landing);
+  await page.getByText('Operational').waitFor();
+  check(cspViolations.length === 0, `landing: no CSP violations ${cspViolations.join(' ')}`);
+  check(
+    (await page.locator('#cmd').innerText()).includes(`${new URL(landing).origin}/mcp`),
+    'landing: connect command uses this origin',
+  );
+  await page.screenshot({ path: join(outDir, 'landing.png'), fullPage: true });
+  console.log('  saved docs/screenshots/landing.png');
+  await ctx.close();
 }
 
 await browser.close();
