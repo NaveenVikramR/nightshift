@@ -164,6 +164,51 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **Would I build with it again?** Yes for local stacks, but I now run `npm run stack:status`
   before trusting it.
 
+## MCP Apps (`@modelcontextprotocol/ext-apps` 2.0.3)
+
+- **What I used it for:** Four interactive cards (incident, confirmation, security scorecard, ops
+  brief) shown next to the spoken answer:
+  - **Server:** `registerAppResource` / `registerAppTool` (`_meta.ui.resourceUri`).
+  - **Cards:** the `App` class (`ontoolresult`, `callServerTool`, theme from the host context).
+  - **Tests:** `AppBridge` + `PostMessageTransport` as a minimal host, for Playwright tests.
+- **What worked well:**
+  - The server helpers are tiny with no runtime deps, and they set both the new and the legacy
+    meta keys.
+  - The `App` API is small and clear.
+  - `callServerTool` from a card through the host made the two-phase flow natural:
+    - the button calls `prepare_action`;
+    - the card's Confirm button calls `confirm_action`;
+    - the server still enforces everything.
+  - `AppBridge(null, …)` with `oncalltool` makes a fixture host for tests easy.
+  - The "View may run under a strict CSP" handling (zod `jitless`) just worked under our empty
+    CSP.
+- **What needs work:**
+  - **Bundle size:** each card is about 600 KB, because `App` pulls in the client SDK and zod.
+    There's no light entry for a View that only needs `ontoolresult` + `callServerTool`.
+  - **basic-host friction:** the example host isn't runnable standalone, the sandbox port is
+    hard-coded (FL-21), there are no auth headers and no prompts UI (FL-22), and every tool
+    call is delivered twice in dev mode (FL-23).
+  - **Docs:** they don't say Views may receive duplicate results.
+  - **Skills:** the recommended skills need a manual install (FL-20).
+- **Onboarding:** About 1 h to the first card rendering in a test host, plus about 1.5 h on
+  basic-host. The `.d.ts` files with examples were the best docs.
+- **Would I build with it again?** Yes. Cards are what make a voice-first tool usable on an Echo
+  Show-like screen, and keeping them an addition (same `speak` + `data`) cost almost nothing.
+
+## Playwright 1.64.1
+
+- **What I used it for:** Rendering every card in Chromium inside a real ext-apps host to:
+  - check the click-through flow and escaping;
+  - capture the README and video screenshots;
+  - drive the ext-apps basic-host end to end against the live stack.
+- **What worked well:** `channel: 'chromium'` works with just `npx playwright install chromium`,
+  without waiting for the separate headless shell. Frame locators across nested iframes (host →
+  sandbox → srcdoc) worked once I searched `page.frames()`.
+- **What needs work:** Full-page captures don't paint iframe content below the fold, and the
+  hit-test goes stale after a viewport resize (FL-24).
+- **Onboarding:** 15 minutes, but the browser download was about 10 minutes here.
+- **Would I build with it again?** Yes.
+
 ## Caddy 2.8.4 (reverse proxy, automatic HTTPS)
 
 - **What I used it for:** The only public entry point of the production stack. It provides:

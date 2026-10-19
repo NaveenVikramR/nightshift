@@ -284,3 +284,77 @@
 - **Time lost:** ~10 minutes
 - **Workaround:** Prefix the command with `MSYS_NO_PATHCONV=1`. Our npm scripts call Docker from Node, which isn't affected.
 - **Suggestion:** Docker docs for Windows could warn about MSYS path conversion in the `docker run` / `exec` pages. Docker Desktop could detect a `C:/Program Files/Git/` prefix in container-path arguments and print a hint.
+
+## FL-20: The skills named for MCP Apps work aren't available unless installed by hand
+
+- **Date:** 2026-10-19
+- **Product / tool:** Claude Code skills; MCP Apps `mcp-apps` plugin (`add-app-to-server`); `frontend-design`
+- **Task attempted:** Add MCP Apps cards to an existing server using the recommended skills.
+- **Steps taken:** Asked for the `add-app-to-server` skill (the ext-apps README recommends it) and the `frontend-design` skill. Neither was in this session's skill list.
+- **Expected:** The skills to be discoverable from the tooling that recommends them.
+- **Actual:** Each needs a separate manual plugin install (`/plugin marketplace add modelcontextprotocol/ext-apps`, then `/plugin install mcp-apps@…`). Nothing in the session pointed to that.
+- **Severity:** Low
+- **Time lost:** ~10 minutes (I read `ext-apps` 2.0.3's README and type definitions instead)
+- **Workaround:** Built from the package's `.d.ts` files: `registerAppTool`, `registerAppResource`, `RESOURCE_MIME_TYPE`, `App`, `AppBridge`.
+- **Suggestion:** When a project or docs mention a skill that isn't installed, say so with the exact install command. The ext-apps npm README could also list the four skills' install commands next to "Getting Started".
+
+## FL-21: ext-apps `basic-host` can't be run on its own from a clone
+
+- **Date:** 2026-10-19
+- **Product / tool:** `modelcontextprotocol/ext-apps` @ 82221c0, `examples/basic-host`
+- **Task attempted:** Run basic-host locally to test our cards in a real MCP Apps host.
+- **Steps taken:**
+  1. `npm install` in `examples/basic-host` (installs at the monorepo root as a workspace), then `vite build`.
+  2. Ran `serve.ts` with `HOST_PORT=8090 SANDBOX_PORT=8091` (8080 is taken on this machine).
+- **Expected:** The README's `npm install && npm run start` works, and the ports are configurable.
+- **Actual:**
+  1. `Rollup failed to resolve import "@modelcontextprotocol/ext-apps/app-bridge"`: the example resolves the unbuilt workspace package, not the published one.
+  2. `npm run serve` needs `bun`.
+  3. `SANDBOX_PORT` changes the server, but `src/implementation.ts` hard-codes `http://localhost:8081/sandbox.html`, so the sandbox iframe failed with `chrome-error://chromewebdata/`.
+- **Severity:** Medium
+- **Time lost:** ~35 minutes (including an 8-minute install)
+- **Workaround:** Copied the published `@modelcontextprotocol/ext-apps` 2.0.3 into the example's own `node_modules`, ran `node --import tsx serve.ts`, and kept the sandbox on 8081.
+- **Suggestion:** Read the sandbox origin from the server (e.g. `/api/config` next to `/api/servers`). Document `npm run build` at the repo root first, and use `tsx` instead of `bun` in `serve`.
+
+## FL-22: basic-host has no way to send an Authorization header, and no prompts UI
+
+- **Date:** 2026-10-19
+- **Product / tool:** ext-apps `examples/basic-host`
+- **Task attempted:** Connect basic-host to Nightshift, which needs a bearer token (and allows only listed Origins).
+- **Steps taken:** Looked for a header or token option in `SERVERS` and `implementation.ts`. It only takes URLs: `new StreamableHTTPClientTransport(serverUrl)`.
+- **Expected:** A way to pass headers, like `claude mcp add --header` or the Inspector's `--header`.
+- **Actual:** Not possible. The browser client also sends `Origin: http://localhost:8090`, and authenticated servers reject that by design. `prompts/list` isn't shown anywhere, so our guided prompts can't be tried there.
+- **Severity:** Medium
+- **Time lost:** ~20 minutes
+- **Workaround:** A dev-only local proxy (kept out of the repo) answers CORS, adds a temporary responder token, and forwards like a non-browser client. Prompts were checked with the MCP Inspector CLI instead.
+- **Suggestion:** Accept `{ url, headers }` objects in `SERVERS`. Add a prompts panel next to the tool picker.
+
+## FL-23: basic-host calls every tool twice (React StrictMode), and the second result replaces the first
+
+- **Date:** 2026-10-19
+- **Product / tool:** ext-apps `examples/basic-host` (dev build, React 19 StrictMode)
+- **Task attempted:** Incident card → Fail over → confirmation card → Confirm, end to end.
+- **Steps taken:** Opened `?server=nightshift&tool=explain_incident&call=true` and clicked the card's action button.
+- **Expected:** One `tools/call` per user action.
+- **Actual:**
+  - The host log shows `Calling tool explain_incident` twice. Each delivery mounts or updates a View.
+  - The run was flaky at first: a late duplicate result re-rendered the card over the confirmation the user had just opened.
+  - With `run_security_scan`, the duplicate hit our 1-per-minute scan limit, and the card showed "I scanned less than a minute ago" instead of the grade.
+  - For a non-idempotent tool, duplicate calls from a host would be a real hazard.
+- **Severity:** Medium
+- **Time lost:** ~40 minutes
+- **Workaround:** In the card, `createResultGate()` ignores host results once the user starts a flow, and never lets an error replace a good card. On the scan limit, the card offers "Show the latest results" (`get_security_findings`). Server-side, `confirm_action` was already single-use and idempotent, so nothing could run twice.
+- **Suggestion:** Guard the auto-call against StrictMode double effects (e.g. with a ref or an AbortController). Note in the MCP Apps docs that Views may receive more than one `tool-result` and should handle it idempotently.
+
+## FL-24: Playwright full-page screenshots don't paint iframe content below the fold
+
+- **Date:** 2026-10-19
+- **Product / tool:** Playwright 1.64.1 + Chromium (new headless)
+- **Task attempted:** Screenshot each card (rendered in an iframe by the test host) at full height.
+- **Steps taken:** `page.screenshot({ fullPage: true })` after the host resized the iframe to the card's height.
+- **Expected:** The whole card.
+- **Actual:** The capture was the full page height, but iframe content below about 745 px was blank. After resizing the viewport to work around it, `click()` inside the iframe failed: "<dt> … intercepts pointer events", from a stale iframe offset.
+- **Severity:** Low
+- **Time lost:** ~25 minutes
+- **Workaround:** Grow the viewport to the iframe's height for the capture, shrink it back afterwards, and use `dispatchEvent('click')` for the click that follows a capture.
+- **Suggestion:** Paint out-of-viewport iframe content in `fullPage` captures, or document the limitation and the viewport workaround.

@@ -137,7 +137,7 @@ export function renderBrief(d: OpsBriefData, ctx: ViewContext): HTMLElement {
     header({
       badge: badge({ tone, label }),
       eyebrow: 'Ops brief',
-      title: headline(d),
+      title: capitalize(headline(d)),
       meta: `Updated ${clock(d.generatedAt)}`,
     }),
     el('div', { class: 'tiles' }, ...tiles),

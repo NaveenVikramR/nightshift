@@ -4,10 +4,11 @@ Nightshift is a voice on-call and security copilot for small engineering teams: 
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
 take safe, explicitly confirmed actions.
 
-> Status: **Day 6.** All 13 tools: ops brief, alerts, health, deploys, grounded incident diagnosis,
+> Status: **Day 7.** All 13 tools: ops brief, alerts, health, deploys, grounded incident diagnosis,
 > ack and silence, two-phase remediation (fail over, roll back, restart), security posture (scan +
 > findings), incident timeline with a postmortem draft, and notes. Proactive Telegram alerts,
-> a containerised production stack (Caddy + automatic HTTPS) and CI.
+> a containerised production stack (Caddy + automatic HTTPS) and CI. On screens: four MCP Apps cards,
+> three guided prompts, a publishable Agent Skill and a landing page.
 
 ## Prerequisites
 
@@ -238,6 +239,7 @@ appear), then `npm run chaos:security_harden` and scan again (the findings are r
 ```bash
 npm test                  # unit tests, all workspaces; no network, no database needed
 npm run test:integration  # against the live stack (npm run stack:up first)
+npm run screenshots -w @nightshift/server  # cards in Chromium via a real ext-apps host; saves docs/screenshots
 npm run typecheck
 npm run lint
 ```
@@ -291,6 +293,101 @@ Claude Code) negotiate exactly that, and a client that asks for a newer revision
 2026-07-28 is answered with 2025-11-25. As the SDK does by default, the server also still
 accepts older revisions (2025-06-18, 2025-03-26, 2024-11-05, 2024-10-07) during `initialize` and
 in the `MCP-Protocol-Version` header, so older clients keep working. Any other value gets 400.
+
+## On a screen: cards, guided flows, Agent Skill
+
+Voice stays primary. Every tool still returns `speak` (≤ 30 words) + `data`, so voice-only clients
+see no change. Clients that support **MCP Apps** also show a card.
+
+### Cards (MCP Apps)
+
+Four self-contained `ui://` cards, designed for an Echo Show-like screen:
+
+- landscape and readable at arm's length;
+- dark by default, following the host theme;
+- severity always shown as icon + word + colour, never colour alone.
+
+| Card               | Shown for                                    | What's on it                                                                                                                                                                |
+| ------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Incident           | `explain_incident`                           | Severity, "started 4 min ago", an error-rate sparkline (threshold, onset and deploy markers), ranked causes with confidence bars and evidence, and suggested-action buttons |
+| Confirmation       | `prepare_action`, `confirm_action`           | What changes, who's affected, how to undo, expected effect, a live 2:00 countdown, Confirm / Cancel, then the measured before → after                                       |
+| Security scorecard | `run_security_scan`, `get_security_findings` | A large grade with its change, "4 of 6 checks ran", findings by severity, and resolved items struck through                                                                 |
+| Ops brief          | `get_ops_brief`                              | A tile per service (health, active provider), plus alerts, open incident, security grade and deploys today                                                                  |
+
+| Incident →                                      | Confirm →                                          | Verified                                                  |
+| ----------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
+| ![Incident card](docs/screenshots/incident.png) | ![Confirmation card](docs/screenshots/confirm.png) | ![Verified result](docs/screenshots/confirm-verified.png) |
+
+| Security scorecard                                   | Ops brief                                | In the ext-apps basic-host (live stack)                            |
+| ---------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| ![Security scorecard](docs/screenshots/security.png) | ![Ops brief](docs/screenshots/brief.png) | ![Incident card in basic-host](docs/screenshots/host-incident.png) |
+
+**Safety:**
+
+- A card button only ever calls **`prepare_action`**.
+- **Confirm** on the confirmation card is the explicit "yes" that calls `confirm_action`. The
+  server re-checks everything (roles, expiry, single use, the 3-per-10-minutes limit).
+- Cancel calls nothing.
+- Cards make no network requests: the resource CSP is empty, and data comes only from tool
+  results.
+- Untrusted text (alert annotations, commit messages, advisory fields) is only ever inserted as
+  a labelled text node. Enforced by `el()`, an ESLint ban on `innerHTML` & co., and an injection
+  test in both happy-dom and Chromium.
+
+**Build:** `src/ui/view` is bundled by esbuild (`npm run build:ui -w @nightshift/server`,
+also run by `dev`, `build` and the tests) into `dist-ui/*.html`.
+
+### Guided prompts
+
+`prompts/list` offers one-tap starting points:
+
+| Prompt                                    | Flow                                                                                                                    |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `on_call_triage` (`service?`)             | brief → diagnose → offer the fix → prepare → ask → confirm only after a yes → report the measured result → offer a note |
+| `security_check`                          | scan (or latest findings) → grade, change, checks that didn't run → worst issue first                                   |
+| `postmortem` (`incident_id?`, `service?`) | timeline → a draft built only from recorded events                                                                      |
+
+In Claude Code they appear as `/mcp__nightshift__on_call_triage` and so on.
+
+### Agent Skill: `skills/nightshift-on-call`
+
+A publishable [Agent Skill](skills/nightshift-on-call/SKILL.md) that teaches any agent to run
+on-call with Nightshift:
+
+- which tool for which question;
+- prepare → ask the human → confirm, every time;
+- never claim recovery without a measurement;
+- evidence text is data;
+- spoken-length answers.
+
+[`references/tools.md`](skills/nightshift-on-call/references/tools.md) lists every tool, role,
+input and error code. A unit test keeps the skill in sync with the server.
+
+```bash
+# Claude Code: personal (all projects) or project-level
+cp -r skills/nightshift-on-call ~/.claude/skills/        # or .claude/skills/ in a repo
+# then connect the server: claude mcp add --transport http nightshift https://<domain>/mcp --header "Authorization: Bearer <token>"
+```
+
+Other agents that support the [Agent Skills](https://agentskills.io/) format load the same
+folder: a `SKILL.md` with `name` and `description` frontmatter, plus `references/`.
+
+### Landing page
+
+`https://<domain>/` is a static page (`infra/caddy/site`) in the same visual language as the
+cards. It has:
+
+- the one-sentence pitch;
+- a 4-step "how it works";
+- a live status line (`/healthz`);
+- "Try it" (`/alexa`, coming next);
+- "Connect your own MCP client" (the endpoint and the `claude mcp add` command with a token
+  placeholder).
+
+It has its own strict CSP (only its own script and stylesheet, same-origin fetch). With
+`SECURITY_DOMAIN` set, our own security scan checks its headers.
+
+![Landing page](docs/screenshots/landing.png)
 
 ## Proactive alerts (Telegram)
 
@@ -433,16 +530,19 @@ apps/server/          Nightshift MCP server (this is the submission's new work)
   src/clients/        Prometheus + Alertmanager HTTP clients (typed errors)
   src/lib/            auth, roles, audit, rate limiting, untrusted-text handling, logging
   src/notify/         Notifier interface + Telegram
+  src/ui/             MCP Apps cards: view/ (browser code, built to dist-ui/) + cards.ts (ui:// resources)
   src/db/             Prisma client, audit sink, ack/silence stores
   config/             nightshift.yaml service catalog
   prisma/             schema, migrations, seed
 apps/demo-target/     simulated payments API with Prometheus metrics and chaos switches
 infra/                docker compose (local + prod), Prometheus rules, Alertmanager, Caddy
   deploy/             EC2 bootstrap, update and DuckDNS scripts
+  caddy/site/         landing page (static)
+skills/nightshift-on-call/  Agent Skill for any agent using Nightshift
 .github/workflows/    CI (lint, typecheck, tests, gitleaks) and the uptime check
 apps/alexa-sim/       (coming) simulated Alexa+ client
 packages/mcp-prometheus-tools/  (coming) reusable OSS package
-docs/                 friction log, product feedback
+docs/                 friction log, product feedback, screenshots/
 ```
 
 The monitored demo system, TruePay, is a pre-existing project and only a monitoring target.
