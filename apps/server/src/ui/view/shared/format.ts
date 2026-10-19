@@ -67,6 +67,17 @@ export function clock(iso: string | null | undefined): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+/**
+ * Server-authored evidence text carries exact ISO times ("…opened at
+ * 2026-10-19T10:50:06.671Z…"); on a screen, show the viewer's clock ("4:20 PM").
+ */
+export function humanizeTimes(text: string): string {
+  return text.replace(
+    /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z\b/g,
+    (iso) => clock(iso) || iso,
+  );
+}
+
 /** 125 -> "2:05". Negative -> "0:00". */
 export function mmss(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));

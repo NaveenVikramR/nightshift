@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRenderer } from '../../src/ui/view/render.js';
-import { ago, mmss, pct, truncate } from '../../src/ui/view/shared/format.js';
+import { createRenderer, createResultGate } from '../../src/ui/view/render.js';
+import { ago, clock, humanizeTimes, mmss, pct, truncate } from '../../src/ui/view/shared/format.js';
 import { toToolResult, type CardHost, type ToolResult } from '../../src/ui/view/shared/host.js';
 import {
   brief,
@@ -177,6 +177,21 @@ describe('security scorecard', () => {
     );
   });
 
+  it('scanned under a minute ago: offers the latest results (read-only, on click)', async () => {
+    const s = setup({ get_security_findings: scan(NOW) });
+    s.render({
+      speak: 'I scanned less than a minute ago. Ask me for the security findings instead.',
+      data: { error: 'scan_rate_limited' },
+      isError: true,
+    });
+    expect(s.text()).toContain('Just scanned');
+    expect(s.calls).toEqual([]);
+    button(s.root, 'Show the latest results').click();
+    await flush();
+    expect(s.calls).toEqual([{ name: 'get_security_findings', args: {} }]);
+    expect(s.root.querySelector('.grade')!.textContent).toBe('C');
+  });
+
   it('get_security_findings with nothing open', () => {
     const s = setup();
     s.render(findingsNone(NOW));
@@ -222,7 +237,42 @@ describe('robustness', () => {
   });
 });
 
+describe('host result gate (duplicate deliveries)', () => {
+  const ok = (speak: string): ToolResult => ({ speak, data: { a: 1 }, isError: false });
+  const err: ToolResult = {
+    speak: 'I scanned less than a minute ago.',
+    data: { error: 'scan_rate_limited' },
+    isError: true,
+  };
+
+  it('an error never replaces a good card (e.g. a duplicated scan call hitting the rate limit)', () => {
+    const gate = createResultGate();
+    expect(gate.accept(ok('Security grade A.'))).toBe(true);
+    expect(gate.accept(err)).toBe(false);
+    expect(gate.accept(ok('Security grade B.'))).toBe(true);
+  });
+
+  it('after the user starts a flow from the card, late host results are ignored', () => {
+    const gate = createResultGate();
+    expect(gate.accept(ok('Critical. Payments API…'))).toBe(true);
+    gate.markInteracted();
+    expect(gate.accept(ok('Critical. Payments API…'))).toBe(false);
+  });
+
+  it('an error can show when nothing good is on screen yet', () => {
+    expect(createResultGate().accept(err)).toBe(true);
+  });
+});
+
 describe('format', () => {
+  it('humanizeTimes turns ISO times in server text into clock times', () => {
+    const iso = '2026-10-19T09:41:00.000Z';
+    expect(humanizeTimes(`opened at ${iso} and is still open`)).toBe(
+      `opened at ${clock(iso)} and is still open`,
+    );
+    expect(humanizeTimes('no times here')).toBe('no times here');
+  });
+
   it('pct, mmss, ago, truncate', () => {
     expect([pct(0.4512), pct(0.005), pct(0), pct(null)]).toEqual(['45%', '0.5%', '0%', '–']);
     expect([mmss(120), mmss(89.9), mmss(-3)]).toEqual(['2:00', '1:29', '0:00']);

@@ -8,7 +8,8 @@ import { renderIncident } from './cards/incident.js';
 import { renderSecurity } from './cards/security.js';
 import { el, mount } from './shared/dom.js';
 import type { CardHost, ToolResult } from './shared/host.js';
-import { errorView, type ViewContext } from './shared/parts.js';
+import { clockIcon } from './shared/icons.js';
+import { errorView, header, type ViewContext } from './shared/parts.js';
 
 export type CardId = 'incident' | 'confirm' | 'security' | 'brief';
 
@@ -24,6 +25,7 @@ export function viewFor(result: ToolResult, ctx: ViewContext): HTMLElement {
   ) {
     return renderConfirmCard(result, ctx);
   }
+  if (result.isError && d['error'] === 'scan_rate_limited') return recentScanView(result, ctx);
   if (result.isError) return errorView(result);
   if (has(d, 'causes', 'series')) return renderIncident(d as unknown as ExplainData, ctx);
   if (has(d, 'grade', 'checks'))
@@ -31,6 +33,38 @@ export function viewFor(result: ToolResult, ctx: ViewContext): HTMLElement {
   if (has(d, 'services', 'alerts', 'security'))
     return renderBrief(d as unknown as OpsBriefData, ctx);
   return errorView({ ...result, speak: result.speak || 'Nothing to show for this result.' });
+}
+
+/** A scan ran under a minute ago: offer the latest results (read-only, on click). */
+function recentScanView(result: ToolResult, ctx: ViewContext): HTMLElement {
+  const status = el('p', { class: 'status-line', role: 'status' });
+  const show = el(
+    'button',
+    { class: 'btn btn-primary', type: 'button' },
+    'Show the latest results',
+  );
+  show.addEventListener('click', () => {
+    show.disabled = true;
+    status.textContent = 'Loading…';
+    ctx.host
+      .callTool('get_security_findings', {})
+      .then((r) => ctx.show(r))
+      .catch(() => {
+        show.disabled = false;
+        status.textContent = "Couldn't reach Nightshift. Try again.";
+      });
+  });
+  return el(
+    'section',
+    {},
+    header({
+      badge: el('span', { class: 'badge tone-info' }, clockIcon(), 'Just scanned'),
+      eyebrow: 'Security',
+      title: result.speak || 'A scan ran less than a minute ago.',
+    }),
+    el('div', { class: 'actions' }, show),
+    status,
+  );
 }
 
 /** Before the host sends a result (or when opened outside an MCP Apps host). */
@@ -47,6 +81,29 @@ export function waitingView(card: CardId | string): HTMLElement {
     el('p', { class: 'brand' }, 'Nightshift'),
     el('p', { class: 'muted' }, `Waiting for the ${what[card] ?? 'card'}…`),
   );
+}
+
+/**
+ * Which host-pushed results (ontoolresult) to show. Hosts may deliver the same call
+ * twice (seen in the ext-apps basic-host); a late duplicate must not wipe out what the
+ * user is doing. Once the user started a flow from the card (prepare/confirm), host
+ * results for the original call are ignored, and an error never replaces a good card.
+ */
+export function createResultGate() {
+  let interacted = false;
+  let shown: ToolResult | null = null;
+  return {
+    /** Call when the card itself calls a tool (the user clicked something). */
+    markInteracted() {
+      interacted = true;
+    },
+    accept(result: ToolResult): boolean {
+      if (interacted) return false;
+      if (shown && !shown.isError && result.isError) return false;
+      shown = result;
+      return true;
+    },
+  };
 }
 
 /** Renders results into `root`, cleaning up timers between renders. */

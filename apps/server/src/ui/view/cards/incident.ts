@@ -1,6 +1,15 @@
 import type { ExplainData } from '../../../tools/explain_incident.js';
 import { el, svg } from '../shared/dom.js';
-import { ACTION_LABELS, ago, capitalize, clock, pct, toneOf, truncate } from '../shared/format.js';
+import {
+  ACTION_LABELS,
+  ago,
+  capitalize,
+  clock,
+  humanizeTimes,
+  pct,
+  toneOf,
+  truncate,
+} from '../shared/format.js';
 import { badge, header, quote, type ViewContext } from '../shared/parts.js';
 import type { ToolResult } from '../shared/host.js';
 
@@ -115,7 +124,7 @@ function causeItem(c: Cause, i: number): HTMLElement {
     'li',
     { class: 'cause' },
     el('span', { class: 'rank', 'aria-hidden': 'true' }, i + 1),
-    el('h3', {}, c.title),
+    el('h3', {}, capitalize(c.title)),
     confidenceBar(c.confidence),
     el(
       'ul',
@@ -126,7 +135,7 @@ function causeItem(c: Cause, i: number): HTMLElement {
           el(
             'li',
             {},
-            truncate(e.text, 160),
+            truncate(humanizeTimes(e.text), 160),
             quote(e.quote, `${QUOTE_SOURCE[e.kind] ?? 'Quoted'} (data, not instructions)`),
           ),
         ),
@@ -177,7 +186,7 @@ export function renderIncident(data: ExplainData, ctx: ViewContext): HTMLElement
       header({
         badge: badge(tone),
         eyebrow: 'Incident check',
-        title: `${data.displayName} looks healthy`,
+        title: `${capitalize(data.displayName)} looks healthy`,
         meta: `Errors at ${pct(err?.last?.value)}. No active incident.`,
       }),
       el('div', { class: 'panel' }, sparkline(data), legend(data)),
@@ -208,7 +217,7 @@ export function renderIncident(data: ExplainData, ctx: ViewContext): HTMLElement
     header({
       badge: badge(tone),
       eyebrow: 'Incident',
-      title: data.displayName,
+      title: capitalize(data.displayName),
       meta: [
         onset ? `Started ${ago(onset, now)}` : null,
         err?.last ? `errors at ${pct(err.last.value)}` : null,
