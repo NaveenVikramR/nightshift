@@ -366,5 +366,46 @@ export async function runCardTool(
   const call = await callTool(deps, session, tool, input, 'card');
   trace.push(call.entry);
   session.trace.push(...trace);
+  recordCardCall(session, tool, input, call.speak, call.data, call.result.isError === true);
   return { result: call.result, trace };
+}
+
+let cardSeq = 0;
+
+/**
+ * Put a card button's tool call into the conversation, so the model knows about
+ * it (e.g. the person taps "Fail over" on the card, then SAYS "yes"). Recorded as
+ * a proper toolUse/toolResult pair after a user note, keeping roles alternating.
+ */
+function recordCardCall(
+  session: Session,
+  tool: string,
+  input: Record<string, unknown>,
+  speak: string,
+  data: Record<string, unknown>,
+  isError: boolean,
+): void {
+  const last = session.history[session.history.length - 1];
+  if (last && last.role !== 'assistant') closeTurn(session.history, 'Okay.');
+  const toolUseId = `card-${++cardSeq}`;
+  session.history.push(
+    {
+      role: 'user',
+      content: [{ text: `(I pressed a button on the ${tool.replaceAll('_', ' ')} card.)` }],
+    },
+    { role: 'assistant', content: [{ toolUse: { toolUseId, name: tool, input } }] },
+    {
+      role: 'user',
+      content: [
+        {
+          toolResult: {
+            toolUseId,
+            status: isError ? 'error' : 'success',
+            content: [{ json: { speak, data } }],
+          },
+        },
+      ],
+    },
+    { role: 'assistant', content: [{ text: speak || 'Done.' }] },
+  );
 }

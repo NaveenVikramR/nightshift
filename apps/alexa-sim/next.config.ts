@@ -12,6 +12,8 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: join(here, '..', '..'),
   poweredByHeader: false,
   reactStrictMode: true,
+  // Don't write an AGENTS.md into the app on `next dev`.
+  agentRules: false,
   // Security headers for everything this app serves; pages also get a nonce CSP from proxy.ts.
   async headers() {
     return [

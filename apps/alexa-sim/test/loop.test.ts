@@ -234,6 +234,22 @@ describe('card buttons (MCP Apps bridge)', () => {
     expect(mcp.calls.map((c) => c.name)).toEqual(['prepare_action', 'confirm_action']);
   });
 
+  it('tap "Fail over" on the card, then SAY "yes": the agent confirms (card call is in the conversation)', async () => {
+    const deps = makeDeps(new ScriptedModel());
+    const { session, mcp } = makeSession();
+    await runTurn(deps, session, "What's wrong?");
+    const prep = await runCardTool(deps, session, 'prepare_action', { suggested_action: {} });
+    expect('result' in prep).toBe(true);
+    const t = await runTurn(deps, session, 'Yes');
+    expect(mcp.calls.map((c) => c.name)).toEqual([
+      'explain_incident',
+      'prepare_action',
+      'confirm_action',
+    ]);
+    expect(t.reply).toMatch(/^Done\./);
+    expect(historyIsValid(session.history)).toBe(true);
+  });
+
   it('cards can only prepare, confirm or read findings', async () => {
     const { session, mcp } = makeSession();
     const out = await runCardTool(makeDeps(new FakeModel([])), session, 'silence_alert', {});

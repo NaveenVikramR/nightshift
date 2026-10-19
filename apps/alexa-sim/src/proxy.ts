@@ -34,6 +34,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    // Next prefixes matchers with basePath ("/alexa/(…)"), which misses the page at "/alexa" itself.
+    '/',
     {
       // Pages only: API routes set their own headers (the card route has its own CSP).
       source: '/((?!api|_next/static|_next/image|favicon.ico).*)',

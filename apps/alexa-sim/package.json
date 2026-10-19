@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3002",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "node test/e2e/flow.e2e.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "3.1152.0",
