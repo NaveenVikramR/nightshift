@@ -44,6 +44,7 @@ export const runSecurityScan: ToolDefinition<typeof inputSchema, ScanData> = {
     'At most once a minute; to read the last results use get_security_findings.',
   inputSchema,
   minRole: 'viewer',
+  card: 'security',
   annotations: {
     readOnlyHint: false, // stores the scan and findings; never changes the scanned systems
     destructiveHint: false,

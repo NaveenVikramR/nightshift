@@ -129,6 +129,7 @@ export const confirmAction: ToolDefinition<typeof inputSchema, ConfirmData> = {
     're-checks the situation first, then reports whether metrics are recovering. A repeated id returns the original result.',
   inputSchema,
   minRole: 'responder',
+  card: 'confirm',
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,

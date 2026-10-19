@@ -21,6 +21,20 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
   {
+    // MCP Apps cards: tool data (incl. untrusted alert/commit/advisory text) is only ever
+    // inserted as text. Build DOM with el()/svg() from src/ui/view/shared/dom.ts.
+    files: ['apps/server/src/ui/**'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        { property: 'innerHTML', message: 'Use el()/textContent: card data is untrusted.' },
+        { property: 'outerHTML', message: 'Use el()/textContent: card data is untrusted.' },
+        { property: 'insertAdjacentHTML', message: 'Use el(): card data is untrusted.' },
+        { object: 'document', property: 'write', message: 'Use el(): card data is untrusted.' },
+      ],
+    },
+  },
+  {
     files: ['**/*.mjs'],
     languageOptions: {
       globals: {

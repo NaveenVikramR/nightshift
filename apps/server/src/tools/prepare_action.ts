@@ -77,6 +77,7 @@ export const prepareAction: ToolDefinition<typeof inputSchema, PreparedData | Cl
     'Ask the user, and only after a clear yes call confirm_action.',
   inputSchema,
   minRole: 'responder',
+  card: 'confirm',
   annotations: {
     readOnlyHint: false, // stores a pending confirmation; the target is untouched
     destructiveHint: false,

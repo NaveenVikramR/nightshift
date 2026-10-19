@@ -1,0 +1,203 @@
+/* Shared components. Sizes assume ~1024x600; everything wraps down to ~360 px. */
+.card {
+  display: grid;
+  gap: var(--gap);
+  padding: 28px 32px 32px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+.head h1 {
+  font-size: 1.8rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.head .meta {
+  flex-basis: 100%;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 1rem;
+}
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Severity: colour + icon + word, always together. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge svg,
+.icon {
+  width: 1.2em;
+  height: 1.2em;
+  flex: none;
+}
+.tone-crit {
+  color: var(--crit);
+  background: var(--crit-bg);
+}
+.tone-warn {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.tone-ok {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+.tone-info {
+  color: var(--info);
+  background: var(--info-bg);
+}
+.fg-crit {
+  color: var(--crit);
+}
+.fg-warn {
+  color: var(--warn);
+}
+.fg-ok {
+  color: var(--ok);
+}
+.fg-info {
+  color: var(--info);
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+}
+.panel h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.85rem;
+}
+.big-number {
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Untrusted text (alert annotations, commit messages, advisories): data, clearly labelled. */
+.quote {
+  border-left: 4px solid var(--line);
+  padding: 4px 0 4px 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.quote-label {
+  display: block;
+  font-style: normal;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Buttons: big touch targets. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 64px;
+  min-width: 160px;
+  padding: 0 28px;
+  border-radius: 16px;
+  border: 2px solid var(--line);
+  background: var(--surface-2);
+  font-size: 1.1rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--text);
+}
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn-danger {
+  background: var(--crit);
+  color: #12060a;
+  border-color: var(--crit);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+
+.waiting {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  text-align: center;
+  gap: 10px;
+}
+.waiting .brand {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--gap);
+}
+
+@media (max-width: 560px) {
+  html {
+    font-size: 17px;
+  }
+  .card {
+    padding: 18px 16px 24px;
+  }
+  .btn {
+    flex: 1 1 100%;
+  }
+}

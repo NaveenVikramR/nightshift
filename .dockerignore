@@ -13,3 +13,4 @@ infra/secrets
 apps/server/src/generated
 **/*.log
 docs
+**/dist-ui

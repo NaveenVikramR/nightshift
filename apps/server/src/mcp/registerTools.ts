@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/server';
+import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import { acknowledgeAlert } from '../tools/acknowledge_alert.js';
 import { addIncidentNote } from '../tools/add_incident_note.js';
 import { confirmAction } from '../tools/confirm_action.js';
@@ -15,6 +16,7 @@ import { runSecurityScan } from '../tools/run_security_scan.js';
 import { runTool } from '../tools/runTool.js';
 import { silenceAlert } from '../tools/silence_alert.js';
 import type { ToolDefinition, ToolDeps } from '../tools/types.js';
+import { CARDS } from '../ui/cards.js';
 import { passThroughSchema } from './passThroughSchema.js';
 
 /** Every Nightshift tool. Add new tools here (see the add-mcp-tool skill). */
@@ -41,16 +43,25 @@ export function registerTools(
   tools: readonly ToolDefinition[] = TOOLS,
 ): void {
   for (const def of tools) {
-    server.registerTool(
-      def.name,
-      {
-        title: def.title,
-        description: def.description,
-        // Advertises the real schema; validation happens in runTool (audited).
-        inputSchema: passThroughSchema(def.inputSchema),
-        annotations: def.annotations,
-      },
-      (input, ctx) => runTool(def, deps, input, ctx.http?.authInfo, ctx.sessionId),
-    );
+    const config = {
+      title: def.title,
+      description: def.description,
+      // Advertises the real schema; validation happens in runTool (audited).
+      inputSchema: passThroughSchema(def.inputSchema),
+      annotations: def.annotations,
+    };
+    const callback: Parameters<McpServer['registerTool']>[2] = (input, ctx) =>
+      runTool(def, deps, input, ctx.http?.authInfo, ctx.sessionId);
+    if (def.card) {
+      // MCP Apps: same tool, plus a link to its ui:// card (hosts without UI ignore it).
+      registerAppTool(
+        server,
+        def.name,
+        { ...config, _meta: { ui: { resourceUri: CARDS[def.card].uri } } },
+        callback,
+      );
+    } else {
+      server.registerTool(def.name, config, callback);
+    }
   }
 }

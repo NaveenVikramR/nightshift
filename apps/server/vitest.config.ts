@@ -6,5 +6,6 @@ export default defineConfig({
     // Live-stack tests run only via `npm run test:integration` (vitest.integration.config.ts).
     exclude: ['test/integration/**', '**/node_modules/**'],
     environment: 'node',
+    globalSetup: ['test/setup/buildUi.ts'],
   },
 });

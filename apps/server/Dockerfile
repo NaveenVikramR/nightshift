@@ -13,6 +13,7 @@ COPY apps/server/prisma apps/server/prisma
 COPY apps/server/prisma7.config.ts apps/server/
 RUN npm ci -w @nightshift/server --no-audit --no-fund
 COPY apps/server/tsconfig.json apps/server/tsconfig.build.json apps/server/
+COPY apps/server/scripts/build-ui.mjs apps/server/scripts/
 COPY apps/server/src apps/server/src
 RUN npm run build -w @nightshift/server
 
@@ -25,6 +26,7 @@ COPY apps/demo-target/package.json apps/demo-target/
 RUN npm ci -w @nightshift/server --omit=dev --ignore-scripts --no-audit --no-fund \
   && npm cache clean --force
 COPY --from=build /app/apps/server/dist apps/server/dist
+COPY --from=build /app/apps/server/dist-ui apps/server/dist-ui
 COPY apps/server/config apps/server/config
 WORKDIR /app/apps/server
 USER node

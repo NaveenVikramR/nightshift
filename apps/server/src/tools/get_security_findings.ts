@@ -38,6 +38,7 @@ export const getSecurityFindings: ToolDefinition<typeof inputSchema, FindingsDat
     'Use when the user asks about security posture or what to fix. To scan now use run_security_scan.',
   inputSchema,
   minRole: 'viewer',
+  card: 'security',
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,

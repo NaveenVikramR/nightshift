@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist-ui/
 apps/server/src/generated/
 coverage/
 *.tsbuildinfo

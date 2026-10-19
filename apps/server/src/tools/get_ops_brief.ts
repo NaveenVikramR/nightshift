@@ -172,6 +172,7 @@ export const getOpsBrief: ToolDefinition<typeof inputSchema, OpsBriefData> = {
     'security grade and deploys in the last 24 hours, most urgent first. Use for "give me the brief" or "how is everything".',
   inputSchema,
   minRole: 'viewer',
+  card: 'brief',
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,

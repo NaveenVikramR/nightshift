@@ -1,3 +1,4 @@
+import type { CardId } from '../ui/cards.js';
 import type { ToolAnnotations } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
 import type { AlertmanagerClient } from '../clients/alertmanager.js';
@@ -70,6 +71,8 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject, D = unknown
   minRole: Role;
   annotations: ToolAnnotations;
   handler(input: z.infer<S>, ctx: ToolContext): Promise<ToolOutput<D>>;
+  /** MCP Apps card shown by hosts that support it (an addition; speak + data are unchanged). */
+  card?: CardId;
   /** Optional spoken explanation for the first validation issue (≤ 30 words). */
   describeInvalidInput?(issue: z.core.$ZodIssue): string | undefined;
 }

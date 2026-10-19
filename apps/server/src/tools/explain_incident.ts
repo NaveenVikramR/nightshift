@@ -69,6 +69,8 @@ export interface ExplainData {
   })[];
   alerts: Diagnosis['alerts'];
   series: Record<string, SeriesSummary>;
+  /** The service's alert thresholds (the card draws the error-rate line). */
+  thresholds: Evidence['service']['thresholds'];
   breakers: { dependency: string; current: string; openedAt: string | null }[];
   deploys: { version: string; deployedAt: string; status: string; author: string | null }[];
   sources: Diagnosis['sources'];
@@ -255,6 +257,7 @@ function toData(
     })),
     alerts: d.alerts,
     series,
+    thresholds: e.service.thresholds,
     breakers: d.facts.breakers.map((b) => ({
       dependency: b.dependency,
       current: b.current,
@@ -287,6 +290,7 @@ export const explainIncident: ToolDefinition<
     'and records the incident. Use for "what\'s wrong?" or "why?". Returns causes with evidence and suggested actions; never executes anything.',
   inputSchema,
   minRole: 'viewer',
+  card: 'incident',
   annotations: {
     readOnlyHint: false, // writes Nightshift's own incident record; never touches the monitored system
     destructiveHint: false,
