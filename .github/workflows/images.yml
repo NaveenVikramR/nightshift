@@ -1,0 +1,64 @@
+name: Images
+
+# Builds the production images and pushes them to GHCR, so the 1 GB EC2 instance only
+# pulls (a Next.js build needs about 1 GB of RAM). infra/deploy/up.sh pulls
+# ghcr.io/<owner>/nightshift-<service>:main when NIGHTSHIFT_IMAGE_PREFIX is set.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: server
+            dockerfile: apps/server/Dockerfile
+            target: runtime
+          - service: migrate
+            dockerfile: apps/server/Dockerfile
+            target: build
+          - service: demo-target
+            dockerfile: apps/demo-target/Dockerfile
+            target: ''
+          - service: alexa-sim
+            dockerfile: apps/alexa-sim/Dockerfile
+            target: ''
+    steps:
+      - uses: actions/checkout@v5
+      - name: Image name (GHCR needs lowercase)
+        id: name
+        run: echo "image=ghcr.io/${OWNER,,}/nightshift-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+        env:
+          OWNER: ${{ github.repository_owner }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:main
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

@@ -4,7 +4,7 @@
 #   curl -fsSLO https://raw.githubusercontent.com/<owner>/<repo>/main/infra/deploy/bootstrap.sh
 #   sudo bash bootstrap.sh https://github.com/<owner>/<repo>.git nightshift-demo.duckdns.org
 #
-# Installs Docker Engine + compose plugin (official apt repo), adds 1 GB swap when RAM < 2 GB,
+# Installs Docker Engine + compose plugin (official apt repo), adds 2 GB swap when RAM < 2 GB,
 # clones the repo to /opt/nightshift/app, creates /opt/nightshift/env/*.env from the templates
 # (chmod 600, random secrets generated, never printed) and installs the DuckDNS cron job.
 # Safe to re-run: existing env files and swap are left alone.
@@ -25,12 +25,12 @@ step() { printf '\n==> %s\n' "$*"; }
 step "Swap"
 mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 if (( mem_kb < 2000000 )) && ! swapon --show=NAME --noheadings | grep -q '^/swapfile$'; then
-  fallocate -l 1G /swapfile
+  fallocate -l 2G /swapfile
   chmod 600 /swapfile
   mkswap /swapfile >/dev/null
   swapon /swapfile
   grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-  echo "1 GB swap enabled"
+  echo "2 GB swap enabled"
 else
   echo "not needed or already on"
 fi
@@ -67,11 +67,11 @@ rand() { openssl rand -base64 33 | tr '+/' '-_' | tr -d '=\n'; }
 demo_token=$(rand)
 webhook_token=$(rand)
 # An existing demo token wins, so nightshift.env and demo.env always match.
-for f in nightshift demo; do
+for f in nightshift demo alexa; do
   existing=$(sed -n 's/^DEMO_ADMIN_TOKEN=//p' "$ENV_DIR/$f.env" 2>/dev/null || true)
   [[ -n $existing && $existing != __* ]] && demo_token=$existing
 done
-for name in nightshift demo caddy duckdns; do
+for name in nightshift demo caddy duckdns alexa deploy; do
   target="$ENV_DIR/$name.env"
   if [[ -e $target ]]; then
     echo "$name.env exists, left as is"

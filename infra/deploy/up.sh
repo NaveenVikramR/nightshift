@@ -29,6 +29,7 @@ require() {
 require nightshift ALLOWED_HOSTS ALLOWED_ORIGINS NIGHTSHIFT_TOKENS DATABASE_URL DEMO_ADMIN_TOKEN \
   ALERTMANAGER_WEBHOOK_TOKEN
 require demo DEMO_ADMIN_TOKEN
+require alexa ALLOWED_ORIGINS ALLOWED_HOSTS DEMO_ADMIN_TOKEN
 require caddy DOMAIN ACME_EMAIL
 if ((${#missing[@]})); then
   printf 'Fill these first (nano %s/<file>):\n' "$NIGHTSHIFT_ENV_DIR" >&2
@@ -38,6 +39,8 @@ fi
 [[ -n $(value nightshift TELEGRAM_BOT_TOKEN) ]] || echo "note: TELEGRAM_BOT_TOKEN empty, no pushes"
 [[ $(value nightshift DEMO_ADMIN_TOKEN) == "$(value demo DEMO_ADMIN_TOKEN)" ]] ||
   { echo "DEMO_ADMIN_TOKEN differs between nightshift.env and demo.env" >&2; exit 1; }
+[[ $(value alexa DEMO_ADMIN_TOKEN) == "$(value demo DEMO_ADMIN_TOKEN)" ]] ||
+  { echo "DEMO_ADMIN_TOKEN differs between alexa.env and demo.env" >&2; exit 1; }
 DOMAIN=$(value caddy DOMAIN)
 
 echo "==> Alertmanager webhook credentials file (readable by the alertmanager user only)"
@@ -47,16 +50,29 @@ value nightshift ALERTMANAGER_WEBHOOK_TOKEN | tr -d '\n' | sudo tee "$secrets/we
 sudo chown root:65534 "$secrets/webhook_token"
 sudo chmod 0440 "$secrets/webhook_token"
 
-echo "==> Build images (sequential)"
-"${COMPOSE[@]}" build demo-target
-"${COMPOSE[@]}" build nightshift
-"${COMPOSE[@]}" --profile migrate build migrate
+# Images: pulled from GHCR when deploy.env sets NIGHTSHIFT_IMAGE_PREFIX
+# (e.g. ghcr.io/<owner>/nightshift, built by .github/workflows/images.yml), else built here.
+if [[ -r $NIGHTSHIFT_ENV_DIR/deploy.env ]]; then
+  NIGHTSHIFT_IMAGE_PREFIX=$(value deploy NIGHTSHIFT_IMAGE_PREFIX)
+  NIGHTSHIFT_IMAGE_TAG=$(value deploy NIGHTSHIFT_IMAGE_TAG)
+  export NIGHTSHIFT_IMAGE_PREFIX NIGHTSHIFT_IMAGE_TAG="${NIGHTSHIFT_IMAGE_TAG:-main}"
+fi
+if [[ -n ${NIGHTSHIFT_IMAGE_PREFIX:-} ]]; then
+  echo "==> Pull images ($NIGHTSHIFT_IMAGE_PREFIX-*:$NIGHTSHIFT_IMAGE_TAG)"
+  "${COMPOSE[@]}" --profile migrate pull migrate nightshift demo-target alexa-sim
+else
+  echo "==> Build images (sequential; a 1 GB host needs the 2 GB swap from bootstrap.sh for alexa-sim)"
+  "${COMPOSE[@]}" build demo-target
+  "${COMPOSE[@]}" build nightshift
+  "${COMPOSE[@]}" --profile migrate build migrate
+  "${COMPOSE[@]}" build alexa-sim
+fi
 
 echo "==> Database migrations"
 "${COMPOSE[@]}" --profile migrate run --rm migrate
 
 echo "==> Start"
-"${COMPOSE[@]}" up -d --remove-orphans
+"${COMPOSE[@]}" up -d --no-build --remove-orphans
 docker image prune -f >/dev/null
 
 echo "==> Waiting for https://$DOMAIN/healthz (first start includes getting the certificate)"

@@ -5,6 +5,10 @@
 #
 #   docker compose -f infra/docker-compose.prod.yml --profile migrate run --rm migrate
 #   docker compose -f infra/docker-compose.prod.yml up -d --build
+#
+# Images: with NIGHTSHIFT_IMAGE_PREFIX=ghcr.io/<owner>/nightshift (set by infra/deploy/up.sh
+# from deploy.env) they are PULLED from GHCR (built by .github/workflows/images.yml);
+# without it they are built locally and tagged nightshift-local-<service>.
 name: nightshift-prod
 
 x-restart: &restart
@@ -15,6 +19,7 @@ services:
   # which has the Prisma CLI; the runtime image has production deps only).
   migrate:
     profiles: ['migrate']
+    image: ${NIGHTSHIFT_IMAGE_PREFIX:-nightshift-local}-migrate:${NIGHTSHIFT_IMAGE_TAG:-main}
     build:
       context: ..
       dockerfile: apps/server/Dockerfile
@@ -26,6 +31,7 @@ services:
 
   nightshift:
     <<: *restart
+    image: ${NIGHTSHIFT_IMAGE_PREFIX:-nightshift-local}-server:${NIGHTSHIFT_IMAGE_TAG:-main}
     build:
       context: ..
       dockerfile: apps/server/Dockerfile
@@ -46,6 +52,7 @@ services:
 
   demo-target:
     <<: *restart
+    image: ${NIGHTSHIFT_IMAGE_PREFIX:-nightshift-local}-demo-target:${NIGHTSHIFT_IMAGE_TAG:-main}
     build:
       context: ..
       dockerfile: apps/demo-target/Dockerfile
@@ -53,6 +60,24 @@ services:
     environment:
       PORT: '8080'
     mem_limit: 96m
+    networks: [backend]
+
+  # Simulated Alexa+ (/alexa): a real MCP client of nightshift (in-network).
+  alexa-sim:
+    <<: *restart
+    image: ${NIGHTSHIFT_IMAGE_PREFIX:-nightshift-local}-alexa-sim:${NIGHTSHIFT_IMAGE_TAG:-main}
+    build:
+      context: ..
+      dockerfile: apps/alexa-sim/Dockerfile
+    env_file: ['${NIGHTSHIFT_ENV_DIR:-/opt/nightshift/env}/alexa.env']
+    environment:
+      NIGHTSHIFT_MCP_URL: http://nightshift:3000/mcp
+      NIGHTSHIFT_DEPLOY_URL: http://nightshift:3000
+      DEMO_ADMIN_URL: http://demo-target:8080
+      SECURE_COOKIES: 'true'
+    depends_on:
+      nightshift: { condition: service_healthy }
+    mem_limit: 256m
     networks: [backend]
 
   prometheus:
@@ -107,7 +132,7 @@ services:
       - ./caddy/site:/srv/site:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on: [nightshift]
+    depends_on: [nightshift, alexa-sim]
     mem_limit: 128m
     networks: [backend]
 

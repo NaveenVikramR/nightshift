@@ -13,7 +13,8 @@
 		# Default CSP ("?" = unless a route set its own, like the landing page below).
 		?Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
+		# Default DENY; the simulator's card route answers SAMEORIGIN (cards are framed by /alexa).
+		?X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
 		-Server
 		-X-Powered-By
@@ -36,6 +37,12 @@
 	handle_path /demo/* {
 		rewrite * /admin{uri}
 		reverse_proxy demo-target:8080
+	}
+
+	# Simulated Alexa+ (Next.js). It sets its own nonce CSP for pages and a sandbox
+	# CSP for cards; the shared snippet adds HSTS, nosniff and Referrer-Policy.
+	handle /alexa* {
+		reverse_proxy alexa-sim:3000
 	}
 
 	# Landing page (static, no secrets). Its CSP allows only its own script and

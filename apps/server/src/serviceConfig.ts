@@ -262,6 +262,7 @@ function applyEnvOverrides(raw: unknown, env: NodeJS.ProcessEnv): unknown {
         ...list('headers'),
         { name: 'Nightshift public endpoint', url: `https://${domain}/healthz` },
         { name: 'Nightshift landing page', url: `https://${domain}/` },
+        { name: 'Nightshift simulated Alexa', url: `https://${domain}/alexa` },
       ],
       tls: [...list('tls'), { name: 'Nightshift public endpoint', host: domain, port: 443 }],
     };

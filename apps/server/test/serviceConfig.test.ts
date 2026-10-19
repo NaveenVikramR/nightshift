@@ -50,6 +50,7 @@ describe('service config', () => {
       'http://demo-target:8080',
       'https://nightshift-demo.duckdns.org/healthz',
       'https://nightshift-demo.duckdns.org',
+      'https://nightshift-demo.duckdns.org/alexa',
     ]);
     expect(c.security.tls).toEqual([
       expect.objectContaining({ host: 'nightshift-demo.duckdns.org', port: 443 }),
