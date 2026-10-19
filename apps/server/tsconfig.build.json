@@ -4,10 +4,6 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "src/ui/view"
-  ]
+  "include": ["src"],
+  "exclude": ["src/ui/view"]
 }

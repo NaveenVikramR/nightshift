@@ -1,21 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": [
-      "ES2023",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "noEmit": true
   },
-  "include": [
-    "src/ui/view",
-    "test/ui",
-    "scripts/screenshots.ts"
-  ]
+  "include": ["src/ui/view", "test/ui", "scripts/screenshots.ts"]
 }
