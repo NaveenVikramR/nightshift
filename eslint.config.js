@@ -26,7 +26,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/scripts/**', '**/prisma/seed.ts', 'apps/demo-target/src/main.ts'],
+    files: [
+      '**/scripts/**',
+      '**/prisma/seed.ts',
+      'apps/demo-target/src/main.ts',
+      'apps/alexa-sim/test/e2e/**',
+    ],
     rules: { 'no-console': 'off' },
   },
   {
@@ -58,6 +63,13 @@ export default tseslint.config(
         clearTimeout: 'readonly',
         setInterval: 'readonly',
       },
+    },
+  },
+  {
+    // Playwright e2e: Node script whose page.evaluate callbacks run in the browser.
+    files: ['apps/alexa-sim/test/e2e/**'],
+    languageOptions: {
+      globals: { setTimeout: 'readonly', window: 'readonly', document: 'readonly' },
     },
   },
   {
