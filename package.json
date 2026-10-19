@@ -10,7 +10,8 @@
   },
   "workspaces": [
     "apps/server",
-    "apps/demo-target"
+    "apps/demo-target",
+    "apps/alexa-sim"
   ],
   "scripts": {
     "dev": "npm run dev -w @nightshift/server",
