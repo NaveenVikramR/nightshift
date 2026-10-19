@@ -124,6 +124,11 @@ try {
   );
   check(/Recovered|Recovering|No improvement/i.test(reply), `verified: ${reply}`);
   void confirm;
+  // The confirm_action card (measured before -> after) replaces the confirmation card.
+  await cardFrame(page, /Error rate, measured/);
+  check(true, 'recovered card rendered');
+  await sleep(800);
+  await page.screenshot({ path: join(shots, 'alexa-4-verified.png') });
 
   // 6. The judges' panel shows prepare -> yes -> confirm -> verification.
   await page.getByText('What Nightshift did').click();
@@ -133,7 +138,7 @@ try {
   check(/Confirmed and executed once/.test(panel), 'trace: confirmed');
   check(/Verified: /.test(panel), 'trace: verification');
   await sleep(500);
-  await page.screenshot({ path: join(shots, 'alexa-4-verified.png'), fullPage: true });
+  await page.locator('.trace').screenshot({ path: join(shots, 'alexa-6-trace.png') });
 
   // 7. Phone layout.
   await page.evaluate(() => window.scrollTo(0, 0));

@@ -1,0 +1,5 @@
+YOU: What's wrong?
+NIGHTSHIFT: Critical. Payments API errors at 46 percent for under a minute. The Razorpay breaker is open. No recent deploy. I can fail over to Stripe.
+NIGHTSHIFT: This will route all payments API traffic from Razorpay to Stripe. You can switch back anytime. Shall I go ahead?
+YOU: Yes
+NIGHTSHIFT: Done. Payments API now uses Stripe. Recovered: errors at 0 percent.

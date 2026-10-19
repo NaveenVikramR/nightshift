@@ -228,6 +228,53 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **Would I build with it again?** Yes. Automatic HTTPS with no certbot cron is exactly right
   for a single-instance deployment.
 
+## Next.js 16.4.2 (simulated Alexa+, `apps/alexa-sim`)
+
+- **What I used it for:** The simulated Alexa+:
+  - App Router pages;
+  - Route Handlers as the backend (MCP client, agent loop, Polly proxy);
+  - `proxy.ts` for a per-request nonce CSP;
+  - standalone output for a small Docker image.
+- **What worked well:**
+  - The bundled docs in `node_modules/next/dist/docs` and the agent note ("this is NOT the Next.js
+    you know") stopped me from writing Next 14-era middleware.
+  - The nonce CSP works with `'strict-dynamic'` and no third-party scripts.
+  - Standalone output in a monorepo works with `outputFileTracingRoot`.
+- **What needs work:**
+  - Proxy matchers miss the `basePath` root, so the CSP silently disappeared (FL-25).
+  - `next dev` writes an AGENTS.md by default (FL-27).
+  - The dev overlay reports CSP violations that production doesn't have (FL-28).
+- **Onboarding:** About 1 h to a working app with a strict CSP, including reading the bundled
+  guides.
+- **Would I build with it again?** Yes for this kind of app. I'd add a CSP check to tests from
+  day one.
+
+## Web Speech API (Chrome)
+
+- **What I used it for:** Push-to-talk speech recognition and the local voice (`speechSynthesis`)
+  before Polly.
+- **What worked well:** No keys or SDK, with interim results for live captions.
+- **What needs work:** It's Chrome-only for recognition, which is why the text box is always
+  visible. Scroll methods returning Promises caused a crash in an effect (FL-26), though that's
+  more React than Web Speech.
+- **Would I build with it again?** Yes for a demo, with a text fallback.
+
 ## AWS services
 
-Not used yet (Bedrock, Polly and App Runner arrive with the Alexa+ simulator and deployment).
+**Status: pending the AWS step.** The code is written and unit-tested against fake SDK clients,
+but not yet run against AWS. This section will be filled with real experience, not guesses.
+
+- **Amazon Bedrock (Converse API with tool use):**
+  - **What for:** the simulator's agent. Nightshift's MCP tools (from `tools/list`) become Converse
+    `toolSpec`s, and the loop runs `toolUse` → MCP `tools/call` → `toolResult`.
+  - **Credentials:** the EC2 instance role through the SDK's default chain; no keys.
+  - **Guards:** 6 tool calls per turn, 20 requests per 10 minutes per token, 500 model requests a
+    day, 20 s timeout.
+  - **So far:** our Converse-shaped message types made the adapter about 40 lines.
+- **Amazon Polly (neural TTS):**
+  - **What for:** the simulator's voice (Kajal en-IN, Joanna en-US), as MP3 through a
+    session-bound backend route.
+  - **Credentials:** the instance role.
+  - **Guards:** 1,500 requests a day, at most 600 characters each.
+- **Amazon EC2:** the deployment target (t3.micro, Caddy, compose). Images come prebuilt from
+  GHCR, because a Next.js build needs about 1 GB of RAM.

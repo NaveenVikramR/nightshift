@@ -4,11 +4,70 @@ Nightshift is a voice on-call and security copilot for small engineering teams: 
 **MCP server** that Alexa+ (or any MCP client) calls to explain what's wrong in production and to
 take safe, explicitly confirmed actions.
 
-> Status: **Day 7.** All 13 tools: ops brief, alerts, health, deploys, grounded incident diagnosis,
-> ack and silence, two-phase remediation (fail over, roll back, restart), security posture (scan +
-> findings), incident timeline with a postmortem draft, and notes. Proactive Telegram alerts,
-> a containerised production stack (Caddy + automatic HTTPS) and CI. On screens: four MCP Apps cards,
-> three guided prompts, a publishable Agent Skill and a landing page.
+> Status: **Day 8.**
+>
+> - **Tools:** all 13 — ops brief, alerts, health, deploys, grounded incident diagnosis, ack and
+>   silence, two-phase remediation (fail over, roll back, restart), security posture (scan +
+>   findings), incident timeline with a postmortem draft, and notes.
+> - **Around them:** proactive Telegram alerts, a containerised production stack (Caddy +
+>   automatic HTTPS), and CI.
+> - **On screens:** four MCP Apps cards, three guided prompts, a publishable Agent Skill, a landing
+>   page, and a **simulated Alexa+** (`/alexa`) to see and hear it all in one click.
+
+## Try it in 60 seconds
+
+1. Open **`https://<your-domain>/alexa`**. Use Chrome for voice; the text box works anywhere.
+2. Enter the judge token from the Devpost testing instructions. It stays on the server for your
+   session only.
+3. Press a chip:
+   - **"Give me the ops brief"**;
+   - or, with a responder token, open **Demo controls → Provider outage**, wait about 30–60 s,
+     then press **"What's wrong?"**.
+4. On the incident card, tap **Fail over to Stripe**. Read what will change, then say or type
+   **"Yes"**. Nightshift confirms, measures the recovery, and says what it measured.
+5. Open **What Nightshift did** to see every MCP tool call, the confirmation step, and the
+   verification.
+
+![Simulated Alexa+: the incident card on an Echo Show-style device](docs/screenshots/alexa-2-incident.png)
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Browser["Simulated Alexa+ (/alexa, browser)"]
+    UI["Echo Show UI<br/>mic (Web Speech) · captions<br/>cards via ext-apps AppBridge"]
+  end
+  subgraph Sim["alexa-sim (Next.js backend)"]
+    Agent["Agent loop<br/>guards: human yes, 6 tools/turn,<br/>20 req/10 min, daily caps"]
+    MCPC["MCP client SDK<br/>one session per browser"]
+  end
+  subgraph AWS["AWS (instance role)"]
+    Bedrock["Bedrock Converse<br/>(tool use)"]
+    Polly["Polly neural TTS"]
+  end
+  subgraph NS["Nightshift MCP server (/mcp)"]
+    Tools["13 tools + 4 MCP Apps cards<br/>+ 3 prompts"]
+    Rules["Deterministic correlation,<br/>two-phase actions, posture scans,<br/>audit log (Postgres)"]
+  end
+  Prom["Prometheus"] --> Tools
+  AM["Alertmanager"] --> Tools
+  AM -- webhook --> Tele["Telegram push"]
+  Tools --> Rules
+  Rules -- "allowlisted actions" --> Demo["Monitored service<br/>(demo-target / TruePay-like)"]
+  Demo --> Prom
+  UI -- "text, CSRF-protected" --> Agent
+  Agent --> Bedrock
+  Agent --> Polly
+  Agent --> MCPC
+  MCPC -- "Streamable HTTP, bearer token" --> Tools
+  CC["Claude Code / any MCP client"] -- "Streamable HTTP" --> Tools
+```
+
+Caddy sits in front of everything: automatic HTTPS, `/mcp`, `/alexa`, `/demo/*`, the landing
+page. Only Caddy is reachable from the internet. The simulator never talks to Prometheus, the
+demo service or the database for answers; everything goes through Nightshift's MCP tools. Its
+demo controls are the only exception: they break the demo service on purpose, through its
+token-protected admin API, server-side.
 
 ## Prerequisites
 
@@ -389,6 +448,78 @@ It has its own strict CSP (only its own script and stylesheet, same-origin fetch
 
 ![Landing page](docs/screenshots/landing.png)
 
+## Simulated Alexa+ (`apps/alexa-sim`)
+
+An Echo Show-style web app at `/alexa`. It is a **real MCP client** of Nightshift: the official
+client SDK over Streamable HTTP, with one MCP session per browser session, authenticated with the
+person's token. An agent loop picks Nightshift tools from `tools/list`.
+
+| Piece         | How                                                                                                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sign in       | A Nightshift token is kept only in server memory (an httpOnly, SameSite=Strict cookie holds a random id). The role is shown.                                                                           |
+| Agent         | Bedrock Converse with tool use. The system prompt comes from the [Agent Skill](skills/nightshift-on-call/SKILL.md). Locally a **scripted model** drives the same loop, so no AWS is needed.            |
+| Voice         | Push-to-talk (Web Speech API, Chrome), a text box that is always visible, quick-start chips, barge-in, captions. Speech from Polly (neural, Indian or US English), or the browser's own voice locally. |
+| Screen        | Nightshift's MCP Apps cards in sandboxed iframes via the ext-apps AppBridge. Card buttons work through the same two-phase flow.                                                                        |
+| Judges' panel | "What Nightshift did": tools, redacted inputs, prepare → your yes → confirm, and the measured verification.                                                                                            |
+| Demo controls | Responder only: outage, bad deploy, latency, brute force, weak headers, reset. Server-side; the admin token never reaches the browser.                                                                 |
+
+**Safety, on top of Nightshift's own checks:**
+
+- The model can only call `confirm_action` for a confirmation **this session prepared, in an
+  earlier turn**, and only when the person's latest words are an explicit yes. A card's Confirm
+  button counts as the yes.
+- Spoken numbers stay grounded: if the model adds a number that isn't in the tool result, the
+  tool's own `speak` is used instead.
+- Routes check the Host allowlist, an exact Origin plus a CSRF token on POST, and Sec-Fetch-Site
+  on GET.
+- Pages get a per-request nonce CSP, and no third-party scripts are loaded.
+
+**Cost safeguards** (env, defaults shown):
+
+| Guard                            | Default                         |
+| -------------------------------- | ------------------------------- |
+| Tool calls per turn              | 6                               |
+| Turns per session                | 40                              |
+| Requests per token               | 20 per 10 min                   |
+| Daily model requests (all users) | 500                             |
+| Daily Polly requests             | 1,500, each ≤ 600 characters    |
+| Timeouts                         | model 20 s, MCP 35 s, turn 60 s |
+
+Logs hold counts only, never text or tokens. `GET /alexa/api/usage` shows today's counters.
+
+**Run locally** (stack and Nightshift dev server running):
+
+```bash
+cp apps/alexa-sim/.env.example apps/alexa-sim/.env.local   # set DEMO_ADMIN_TOKEN (infra/.env)
+npm run dev -w @nightshift/alexa-sim                         # http://127.0.0.1:3002/alexa
+ALEXA_TOKEN_FILE=<file with a responder token> npm run e2e -w @nightshift/alexa-sim
+```
+
+**Switch to Bedrock and Polly** (prod, `alexa.env`):
+
+1. Set `MODEL_PROVIDER=bedrock`, `BEDROCK_MODEL_ID=<a model or inference profile with tool use>`,
+   `AWS_REGION` and `TTS_PROVIDER=polly`.
+2. Give the EC2 **instance role** only this. No access keys anywhere:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel"],
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/*",
+        "arn:aws:bedrock:*:*:inference-profile/*"
+      ]
+    },
+    { "Effect": "Allow", "Action": ["polly:SynthesizeSpeech"], "Resource": "*" }
+  ]
+}
+```
+
+Narrow the Bedrock resources to your model's ARNs once it's chosen.
+
 ## Proactive alerts (Telegram)
 
 An MCP server can't make Alexa speak unprompted, so pushes go to the phone instead:
@@ -540,7 +671,7 @@ infra/                docker compose (local + prod), Prometheus rules, Alertmana
   caddy/site/         landing page (static)
 skills/nightshift-on-call/  Agent Skill for any agent using Nightshift
 .github/workflows/    CI (lint, typecheck, tests, gitleaks) and the uptime check
-apps/alexa-sim/       (coming) simulated Alexa+ client
+apps/alexa-sim/       simulated Alexa+ (Next.js): agent loop, MCP client, Echo Show UI, Bedrock/Polly adapters
 packages/mcp-prometheus-tools/  (coming) reusable OSS package
 docs/                 friction log, product feedback, screenshots/
 ```

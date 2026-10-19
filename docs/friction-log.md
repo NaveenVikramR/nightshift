@@ -358,3 +358,57 @@
 - **Time lost:** ~25 minutes
 - **Workaround:** Grow the viewport to the iframe's height for the capture, shrink it back afterwards, and use `dispatchEvent('click')` for the click that follows a capture.
 - **Suggestion:** Paint out-of-viewport iframe content in `fullPage` captures, or document the limitation and the viewport workaround.
+
+## FL-25: Next.js 16 `proxy` matchers miss the `basePath` root, so the CSP silently disappears
+
+- **Date:** 2026-10-19
+- **Product / tool:** Next.js 16.4.2 (`proxy.ts`, formerly middleware; `basePath: '/alexa'`)
+- **Task attempted:** Set a per-request nonce CSP on every page of the simulator, following the Next 16 CSP guide.
+- **Steps taken:**
+  1. Copied the guide's `proxy.ts` and its matcher `/((?!api|_next/static|_next/image|favicon.ico).*)`.
+  2. Set `basePath: '/alexa'` and requested `http://127.0.0.1:3002/alexa`.
+- **Expected:** A `Content-Security-Policy` header on the page.
+- **Actual:** No CSP header and no error. Next prefixes matchers with `basePath` (`build/analysis/get-page-static-info.js`), which gives `/alexa/((?!api…).*)`. That never matches the root page `/alexa` itself. Nothing in the CSP or proxy docs mentions `basePath`.
+- **Severity:** Medium (a security header silently missing)
+- **Time lost:** ~20 minutes
+- **Workaround:** Add `'/'` as its own matcher entry. Next treats a root matcher specially and matches `/alexa`. A CSP check is part of our e2e now.
+- **Suggestion:** Mention `basePath` in the CSP guide and the matcher docs, or match the basePath root in prefixed patterns. A dev warning when no route matches the proxy would also help.
+
+## FL-26: An effect returning `scrollIntoView(...)` breaks in newer Chromium ("destroy is not a function")
+
+- **Date:** 2026-10-19
+- **Product / tool:** React 19.3 + Chromium (Playwright 1.64 build)
+- **Task attempted:** Keep the captions scrolled to the latest line.
+- **Steps taken:** `useEffect(() => ref.current?.scrollIntoView({ block: 'end' }), [captions])`
+- **Expected:** It scrolls, as it does in older browsers (where `scrollIntoView` returns `undefined`).
+- **Actual:** After sign-in the app crashed with `Uncaught TypeError: destroy is not a function`. Scroll methods now return a Promise, so the arrow function returned a Promise to React as the effect's cleanup.
+- **Severity:** Medium (blank app after login)
+- **Time lost:** ~10 minutes
+- **Workaround:** Use braces so the effect returns nothing.
+- **Suggestion:** In React's error, name the effect and say what was returned ("an effect returned a Promise; return nothing or a function"). The dev warning is there but scrolls away behind the crash.
+
+## FL-27: `next dev` writes an AGENTS.md into the project by default
+
+- **Date:** 2026-10-19
+- **Product / tool:** Next.js 16.4.2 (`agentRules`)
+- **Task attempted:** Run the app in dev.
+- **Steps taken:** `next dev` in `apps/alexa-sim`.
+- **Expected:** No new files in the source tree.
+- **Actual:** "✓ Generated AGENTS.md for AI agents" — a new untracked file in the app folder. In a monorepo with its own agent instructions, that's noise in `git status`.
+- **Severity:** Low
+- **Time lost:** ~5 minutes
+- **Workaround:** `agentRules: false` in `next.config.ts`; deleted the file.
+- **Suggestion:** Ask once (or print the opt-in) instead of writing into the repo by default.
+
+## FL-28: Strict CSP violations in `next dev` that don't exist in production
+
+- **Date:** 2026-10-19
+- **Product / tool:** Next.js 16.4.2 dev server
+- **Task attempted:** Check the page has no CSP violations (nonce CSP, no `'unsafe-inline'` styles) in the e2e test.
+- **Steps taken:** Ran the Playwright e2e against `next dev`, then against `next build && next start`.
+- **Expected:** Same CSP behaviour in both.
+- **Actual:** In dev the console reported `Applying inline style violates the following Content Security Policy directive 'style-src 'self' 'nonce-…''` (dev tooling). The production build had none.
+- **Severity:** Low
+- **Time lost:** ~15 minutes (including a production build to rule out our code)
+- **Workaround:** Run CSP checks against a production build only.
+- **Suggestion:** Make the dev overlay CSP-nonce aware, or note in the CSP guide that strict style policies report dev-only violations.
