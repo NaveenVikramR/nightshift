@@ -6,7 +6,7 @@ import {
   setCsrf,
   type CardOut,
   type SessionInfo,
-  type ToolResultPayload,
+  type CardToolResponse,
   type TraceEntry,
 } from './api';
 import { CardHost } from './CardHost';
@@ -37,19 +37,6 @@ const CHIPS = [
 ];
 
 let captionSeq = 0;
-
-/** Speakable text of a tool result (server-authored `speak`). */
-function speakOf(result: ToolResultPayload): string {
-  const s = result.structuredContent as { speak?: unknown } | undefined;
-  if (typeof s?.speak === 'string') return s.speak;
-  const first = result.content?.[0] as { text?: unknown } | undefined;
-  try {
-    const parsed = JSON.parse(String(first?.text ?? '{}')) as { speak?: unknown };
-    return typeof parsed.speak === 'string' ? parsed.speak : '';
-  } catch {
-    return '';
-  }
-}
 
 export function App() {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined);
@@ -188,25 +175,18 @@ function Device({ session, onSignedOut }: { session: SessionInfo; onSignedOut: (
     [voice, say, handleError],
   );
 
-  /** A card button ran a tool (prepare/confirm/findings): caption + speak its answer. */
+  /** A card button ran a tool (prepare/confirm/findings): caption + speak the server's answer. */
   const onCardTool = useCallback(
-    (tool: string, result: ToolResultPayload, entries: TraceEntry[]) => {
-      setTrace((t) => [...t, ...entries].slice(-60));
+    (_tool: string, out: CardToolResponse) => {
+      setTrace((t) => [...t, ...out.trace].slice(-60));
       // The card just changed view (e.g. incident -> confirmation): show it from the top.
       void cardsBox.current?.scrollTo({ top: 0, behavior: 'smooth' });
-      const s = speakOf(result);
-      if (!s) return;
-      say('nightshift', s);
-      if (tool === 'confirm_action' || tool === 'prepare_action') {
-        setRing('speaking');
-        void speak(
-          s,
-          session.speechProvider === 'browser' ? { provider: 'browser' } : { provider: 'none' },
-          voice,
-        ).then(() => setRing('idle'));
-      }
+      if (!out.speak) return;
+      say('nightshift', out.speak);
+      setRing('speaking');
+      void speak(out.speak, out.audio, voice).then(() => setRing('idle'));
     },
-    [say, voice, session.speechProvider],
+    [say, voice],
   );
 
   const toggleMic = () => {
@@ -274,7 +254,9 @@ function Device({ session, onSignedOut }: { session: SessionInfo; onSignedOut: (
                 <p className="muted">Tap a suggestion, hold the mic, or type.</p>
               </div>
             ) : (
-              cards.map((c) => <CardHost key={c.key} card={c} onToolResult={onCardTool} />)
+              cards.map((c) => (
+                <CardHost key={c.key} card={c} voice={voice} onToolResult={onCardTool} />
+              ))
             )}
           </div>
           <div className="captions" aria-label="Conversation">
@@ -364,11 +346,12 @@ function Device({ session, onSignedOut }: { session: SessionInfo; onSignedOut: (
           </select>
           <span className="muted small">
             {session.model} · {session.speech}
+            {session.guardrail ? ` · ${session.guardrail}` : ''}
           </span>
         </div>
       </section>
 
-      <TracePanel trace={trace} model={session.model} />
+      <TracePanel trace={trace} model={session.model} guardrail={session.guardrail} />
       {session.demo ? (
         <DemoPanel onEntry={(e) => setTrace((t) => [...t, e])} onError={handleError} />
       ) : null}

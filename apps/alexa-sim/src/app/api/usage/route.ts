@@ -6,7 +6,7 @@ import { runtime } from '@/server/runtime';
 export async function GET(req: NextRequest) {
   const g = guard(req, { session: true });
   if ('response' in g) return g.response;
-  const { usage, agent, speechCap, sessions } = runtime();
+  const { usage, agent, speechCap, speechCharCap, sessions } = runtime();
   return json({
     counts: usage.counts,
     today: {
@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
       modelRequestCap: agent.modelCap.limit,
       speechRequests: speechCap.count,
       speechRequestCap: speechCap.limit,
+      speechCharacters: speechCharCap.count,
+      speechCharacterCap: speechCharCap.limit,
     },
     sessions: sessions.size,
   });

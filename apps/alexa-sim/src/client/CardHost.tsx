@@ -7,14 +7,19 @@
  */
 import { AppBridge, PostMessageTransport } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { useEffect, useRef } from 'react';
-import { api, type CardOut, type ToolResultPayload, type TraceEntry } from './api';
+import { api, type CardOut, type CardToolResponse } from './api';
 
 export function CardHost(props: {
   card: CardOut;
-  onToolResult: (tool: string, result: ToolResultPayload, trace: TraceEntry[]) => void;
+  /** Polly voice for the spoken answer to a card button. */
+  voice: string;
+  onToolResult: (tool: string, out: CardToolResponse) => void;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const { card, onToolResult } = props;
+  // Read at click time, so changing the voice doesn't reload the card.
+  const voiceRef = useRef(props.voice);
+  voiceRef.current = props.voice;
 
   useEffect(() => {
     const frame = ref.current;
@@ -29,8 +34,12 @@ export function CardHost(props: {
       if (height && !disposed) frame.style.height = `${Math.min(Math.ceil(height), 2000)}px`;
     };
     bridge.oncalltool = async (params) => {
-      const out = await api.tool(params.name, (params.arguments ?? {}) as Record<string, unknown>);
-      onToolResult(params.name, out.result, out.trace);
+      const out = await api.tool(
+        params.name,
+        (params.arguments ?? {}) as Record<string, unknown>,
+        voiceRef.current,
+      );
+      onToolResult(params.name, out);
       return out.result as Awaited<ReturnType<NonNullable<typeof bridge.oncalltool>>>;
     };
     bridge.oninitialized = () => {

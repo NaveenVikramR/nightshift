@@ -7,13 +7,14 @@ import { VOICES } from '@/server/tts';
 export async function GET(req: NextRequest) {
   const g = guard(req, { session: true });
   if ('response' in g) return g.response;
-  const { agent, speech, cfg } = runtime();
+  const { agent, speech, cfg, guardrailLabel } = runtime();
   const s = g.session;
   return json({
     actor: s.actor,
     role: s.role,
     csrf: s.csrf,
     model: agent.model.label,
+    guardrail: guardrailLabel,
     speech: speech.label,
     speechProvider: cfg.TTS_PROVIDER,
     voices: Object.entries(VOICES).map(([id, v]) => ({ id, label: v.label })),

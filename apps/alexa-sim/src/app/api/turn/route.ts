@@ -1,47 +1,49 @@
 /** POST /alexa/api/turn { text, voice } → the agent's reply, cards, trace and speech. */
-import { randomBytes } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { runTurn } from '@/server/agent/loop';
 import { guard, json, readJson } from '@/server/http';
 import { log } from '@/server/log';
 import { runtime } from '@/server/runtime';
-import type { VoiceId } from '@/server/tts';
+import { speakReply, voiceOf } from '@/server/speak';
 
 export const maxDuration = 90;
 
 export async function POST(req: NextRequest) {
   const g = guard(req, { session: true });
   if ('response' in g) return g.response;
-  const { agent, speech } = runtime();
+  const { agent, speech, metrics } = runtime();
   const session = g.session;
 
   const body = await readJson(req);
   const text = typeof body?.['text'] === 'string' ? body['text'].trim().slice(0, 500) : '';
-  const voice: VoiceId = body?.['voice'] === 'en-US' ? 'en-US' : 'en-IN';
   if (!text) return json({ error: 'empty' }, 400);
 
   const started = Date.now();
   const turn = await runTurn(agent, session, text);
+  const { audio, characters } = await speakReply(
+    speech,
+    session,
+    turn.reply,
+    voiceOf(body?.['voice']),
+  );
 
-  // Speech: Polly MP3 kept in session memory for one fetch, or "browser" (local).
-  let audio: { provider: 'browser' } | { provider: 'polly'; id: string } | { provider: 'none' } = {
-    provider: 'none',
-  };
-  try {
-    const s = await speech.synthesize(turn.reply, voice, AbortSignal.timeout(10_000));
-    if (s.provider === 'polly') {
-      const id = randomBytes(12).toString('base64url');
-      session.audio.clear();
-      session.audio.set(id, s.audio);
-      audio = { provider: 'polly', id };
-    } else if (s.provider === 'browser') audio = { provider: 'browser' };
-  } catch {
-    log.warn('speech failed');
-  }
-
+  const s = turn.stats;
+  metrics.record({
+    AgentTurns: 1,
+    ToolCalls: s.toolCalls,
+    GuardrailBlocks: s.guardrailBlocks,
+    ModelErrors: s.modelErrors,
+    PollyCharacters: characters,
+  });
+  // Counts only: approximate cost inputs per turn.
   log.info('turn', {
     ms: Date.now() - started,
-    tools: turn.trace.filter((t) => t.tool !== 'human').length,
+    modelCalls: s.modelCalls,
+    inputTokens: s.inputTokens,
+    outputTokens: s.outputTokens,
+    tools: s.toolCalls,
+    guardrailBlocks: s.guardrailBlocks,
+    pollyCharacters: characters,
     cards: turn.cards.length,
     source: turn.replySource,
   });
@@ -52,5 +54,11 @@ export async function POST(req: NextRequest) {
     trace: turn.trace,
     audio,
     model: turn.modelLabel,
+    usage: {
+      modelCalls: s.modelCalls,
+      inputTokens: s.inputTokens,
+      outputTokens: s.outputTokens,
+      pollyCharacters: characters,
+    },
   });
 }

@@ -1,11 +1,16 @@
 /** Browser-side API calls (same origin; basePath must be added by hand for fetch). */
 export const BASE = '/alexa';
 
+export type AudioRef =
+  { provider: 'browser' } | { provider: 'polly'; id: string } | { provider: 'none' };
+
 export interface SessionInfo {
   actor: string;
   role: 'viewer' | 'responder';
   csrf: string;
   model: string;
+  /** e.g. "Bedrock Guardrails · abc123 v1", or null. */
+  guardrail: string | null;
   speech: string;
   speechProvider: 'browser' | 'polly';
   voices: { id: 'en-IN' | 'en-US'; label: string }[];
@@ -23,6 +28,7 @@ export interface TraceEntry {
   note: string;
   confirmation?: { step: 'prepared' | 'human_yes' | 'confirmed' | 'refused'; id: string };
   verification?: { outcome: string; before: number | null; after: number | null };
+  tokens?: { input: number; output: number };
 }
 
 export interface ToolResultPayload {
@@ -42,8 +48,17 @@ export interface TurnResponse {
   replySource: 'model' | 'tool' | 'guard';
   cards: CardOut[];
   trace: TraceEntry[];
-  audio: { provider: 'browser' } | { provider: 'polly'; id: string } | { provider: 'none' };
+  audio: AudioRef;
   model: string;
+  usage: { modelCalls: number; inputTokens: number; outputTokens: number; pollyCharacters: number };
+}
+
+/** A card button's tool call, with the server's spoken answer. */
+export interface CardToolResponse {
+  result: ToolResultPayload;
+  trace: TraceEntry[];
+  speak: string;
+  audio: AudioRef;
 }
 
 export class ApiError extends Error {
@@ -82,11 +97,8 @@ export const api = {
     call<{ actor: string; role: string; csrf: string }>('POST', 'login', { token }),
   logout: () => call<{ ok: boolean }>('POST', 'logout', {}),
   turn: (text: string, voice: string) => call<TurnResponse>('POST', 'turn', { text, voice }),
-  tool: (name: string, args: Record<string, unknown>) =>
-    call<{ result: ToolResultPayload; trace: TraceEntry[] }>('POST', 'tool', {
-      name,
-      arguments: args,
-    }),
+  tool: (name: string, args: Record<string, unknown>, voice: string) =>
+    call<CardToolResponse>('POST', 'tool', { name, arguments: args, voice }),
   demo: (scenario: string) =>
     call<{ ok: boolean; message: string }>('POST', `demo/${scenario}`, {}),
   speechUrl: (id: string) => `${BASE}/api/speech?id=${encodeURIComponent(id)}`,

@@ -120,7 +120,7 @@ describe('Bedrock adapter (fake SDK client)', () => {
           },
         ],
       },
-      inferenceConfig: { maxTokens: 400 },
+      inferenceConfig: { maxTokens: 300, temperature: 0 },
     });
     expect(JSON.stringify(input)).not.toContain('$schema');
   });
@@ -167,7 +167,7 @@ describe('Polly adapter (fake SDK client)', () => {
       usage,
     );
     const r = await polly.synthesize('x'.repeat(900), 'en-IN');
-    expect(r).toEqual({ provider: 'polly', audio: new Uint8Array([1, 2]) });
+    expect(r).toEqual({ provider: 'polly', audio: new Uint8Array([1, 2]), characters: 600 });
     expect(sent[0]!.input).toMatchObject({
       Engine: 'neural',
       OutputFormat: 'mp3',
@@ -224,15 +224,35 @@ describe('request security', () => {
     expect(checkCsrf('abc', 'abd').ok).toBe(false);
     expect(checkCsrf('abc', null).ok).toBe(false);
   });
-  it('config defaults: scripted model, browser speech, the documented limits', () => {
-    expect(loadConfig({} as NodeJS.ProcessEnv)).toMatchObject({
-      MODEL_PROVIDER: 'scripted',
-      TTS_PROVIDER: 'browser',
+  it('config defaults: Bedrock + Polly, the documented cost limits', () => {
+    const env = { BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0', AWS_REGION: 'ap-southeast-2' };
+    expect(loadConfig(env as unknown as NodeJS.ProcessEnv)).toMatchObject({
+      MODEL_PROVIDER: 'bedrock',
+      TTS_PROVIDER: 'polly',
+      CLOUDWATCH_METRICS: false,
       MAX_TOOL_CALLS_PER_TURN: 6,
       RATE_LIMIT_REQUESTS: 20,
       RATE_LIMIT_WINDOW_MINUTES: 10,
-      DAILY_MODEL_REQUEST_CAP: 500,
+      DAILY_MODEL_REQUEST_CAP: 100,
+      DAILY_SPEECH_REQUEST_CAP: 300,
+      DAILY_SPEECH_CHAR_CAP: 40_000,
     });
+  });
+
+  it('no silent fallback: Bedrock needs a model and region; scripted/browser only when asked, never in production', () => {
+    const load = (env: Record<string, string>) => () =>
+      loadConfig(env as unknown as NodeJS.ProcessEnv);
+    expect(load({})).toThrow(/AWS_REGION is required.*BEDROCK_MODEL_ID is required/);
+    const local = { MODEL_PROVIDER: 'scripted', TTS_PROVIDER: 'browser' };
+    expect(load(local)).toThrow(/needs ALLOW_SCRIPTED_MODEL=true/);
+    expect(load({ ...local, ALLOW_SCRIPTED_MODEL: 'true' })).not.toThrow();
+    expect(load({ ...local, ALLOW_SCRIPTED_MODEL: 'true', NODE_ENV: 'production' })).toThrow(
+      /scripted is not allowed in production.*browser is not allowed in production/,
+    );
+    const aws = { BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0', AWS_REGION: 'ap-southeast-2' };
+    expect(load({ ...aws, NODE_ENV: 'production' })).not.toThrow();
+    expect(load({ ...aws, BEDROCK_GUARDRAIL_ID: 'abc123' })).toThrow(/both BEDROCK_GUARDRAIL_ID/);
+    expect(load({ ...aws, AWS_REGION: 'us-east-1; rm' })).toThrow();
   });
 });
 

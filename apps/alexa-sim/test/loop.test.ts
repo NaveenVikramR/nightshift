@@ -22,11 +22,17 @@ describe('agent loop', () => {
     ]);
     const { session, mcp } = makeSession();
     const turn = await runTurn(makeDeps(model), session, "What's wrong?");
-    expect(model.requests[0]!.tools.map((t) => t.name)).toEqual(TOOLS.map((t) => t.name));
+    // Trimmed: no confirm_action until something is prepared.
+    expect(model.requests[0]!.tools.map((t) => t.name)).toEqual(
+      TOOLS.map((t) => t.name).filter((n) => n !== 'confirm_action'),
+    );
     expect(mcp.calls).toEqual([{ name: 'explain_incident', args: { service: 'payments' } }]);
     expect(turn.reply).toBe('Critical. Payments API errors at 45 percent.');
     expect(turn.cards.map((c) => c.resourceUri)).toEqual(['ui://nightshift/incident.html']);
-    expect(turn.trace.map((t) => [t.tool, t.outcome])).toEqual([['explain_incident', 'ok']]);
+    expect(turn.trace.map((t) => [t.tool, t.outcome])).toEqual([
+      ['explain_incident', 'ok'],
+      ['model', 'ok'],
+    ]);
     expect(historyIsValid(session.history)).toBe(true);
   });
 
@@ -57,12 +63,17 @@ describe('two-phase confirmation needs a human yes (server-side)', () => {
     expect(t1.trace.map((t) => [t.tool, t.outcome, t.confirmation?.step])).toEqual([
       ['prepare_action', 'ok', 'prepared'],
       ['confirm_action', 'refused', 'refused'],
+      ['model', 'ok', undefined],
     ]);
     expect(deps.usage.counts.refusedConfirms).toBe(1);
 
     const t2 = await runTurn(deps, session, 'Yes, do it');
     expect(mcp.calls.map((c) => c.name)).toEqual(['prepare_action', 'confirm_action']);
-    expect(t2.trace.map((t) => t.confirmation?.step)).toEqual(['human_yes', 'confirmed']);
+    expect(t2.trace.map((t) => t.confirmation?.step)).toEqual([
+      'human_yes',
+      'confirmed',
+      undefined,
+    ]);
     expect(t2.trace[1]!.verification).toEqual({ outcome: 'recovered', before: 0.45, after: 0.005 });
     expect(session.prepared.size).toBe(0);
     expect(historyIsValid(session.history)).toBe(true);

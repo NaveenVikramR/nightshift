@@ -21,6 +21,8 @@ export interface TraceEntry {
   note: string;
   confirmation?: { step: 'prepared' | 'human_yes' | 'confirmed' | 'refused'; id: string };
   verification?: { outcome: string; before: number | null; after: number | null };
+  /** On the "model" entry: tokens used this turn (counts only). */
+  tokens?: { input: number; output: number };
 }
 
 export interface Session {

@@ -1,7 +1,7 @@
 /**
- * Text to speech. Prod: Amazon Polly (neural voices, MP3), credentials from the
- * instance role via the default provider chain. Local: the browser speaks with
- * its own speechSynthesis (no AWS needed).
+ * Text to speech: Amazon Polly (neural voices, MP3), credentials from the default
+ * provider chain (instance role on EC2, AWS profile locally). The browser's own
+ * speechSynthesis is for tests and the local scripted e2e only.
  */
 import {
   PollyClient,
@@ -22,7 +22,7 @@ export const MAX_SPEECH_CHARS = 600;
 
 export type SpeechResult =
   | { provider: 'browser' }
-  | { provider: 'polly'; audio: Uint8Array }
+  | { provider: 'polly'; audio: Uint8Array; characters: number }
   | { provider: 'none'; reason: string };
 
 export interface Speech {
@@ -31,7 +31,7 @@ export interface Speech {
 }
 
 export class BrowserSpeech implements Speech {
-  readonly label = 'Browser speech synthesis (local)';
+  readonly label = 'Browser speech synthesis (local test mode)';
   async synthesize(): Promise<SpeechResult> {
     return { provider: 'browser' };
   }
@@ -52,19 +52,26 @@ export class PollySpeech implements Speech {
     private readonly client: PollySender,
     private readonly cap: DailyCap,
     private readonly usage: Usage,
+    /** Characters per UTC day (Polly bills per character). */
+    private readonly charCap?: DailyCap,
   ) {}
 
-  static fromRegion(region: string | undefined, cap: DailyCap, usage: Usage): PollySpeech {
-    return new PollySpeech(new PollyClient(region ? { region } : {}), cap, usage);
+  static fromRegion(region: string, cap: DailyCap, usage: Usage, charCap: DailyCap): PollySpeech {
+    return new PollySpeech(new PollyClient({ region }), cap, usage, charCap);
   }
 
   async synthesize(text: string, voice: VoiceId, signal?: AbortSignal): Promise<SpeechResult> {
     const clipped = text.slice(0, MAX_SPEECH_CHARS);
     if (!clipped.trim()) return { provider: 'none', reason: 'empty' };
+    if (this.charCap && this.charCap.count + clipped.length > this.charCap.limit) {
+      this.usage.add('dailyCapHit');
+      return { provider: 'none', reason: 'daily_char_cap' };
+    }
     if (!this.cap.take()) {
       this.usage.add('dailyCapHit');
       return { provider: 'none', reason: 'daily_cap' };
     }
+    this.charCap?.take(clipped.length);
     this.usage.add('speechRequests');
     this.usage.add('speechCharacters', clipped.length);
     const out = await this.client.send(
@@ -78,6 +85,10 @@ export class PollySpeech implements Speech {
       signal ? { abortSignal: signal } : undefined,
     );
     if (!out.AudioStream) return { provider: 'none', reason: 'no_audio' };
-    return { provider: 'polly', audio: await out.AudioStream.transformToByteArray() };
+    return {
+      provider: 'polly',
+      audio: await out.AudioStream.transformToByteArray(),
+      characters: clipped.length,
+    };
   }
 }
