@@ -457,3 +457,16 @@
 - **Also checked (read-only):** the cross-Region profile `apac.amazon.nova-lite-v1:0` is `ACTIVE` in ap-southeast-2, but its quotas are 0 too: tokens per minute L-7C42E72A and requests per minute L-89F8391A. The AWS default values for the same codes are 200 requests and 200,000 tokens per minute on-demand, and 400 requests and 400,000 tokens cross-Region. So the zeros are account-level, not model defaults. The [supported-services page](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html) lists Amazon Bedrock as included in the Free Tier and says nothing about quotas. The only reports we found are re:Post threads ([1](https://repost.aws/questions/QUrHqBJPLQRqaz6OH-I8RtOg/free-plan-bedrock-has-zero-quotas), [2](https://repost.aws/questions/QU72KiZDvYS0yLPDQ5scqZ_A/amazon-bedrock-throttlingexception-too-many-tokens-per-day-on-brand-new-account-quota-stuck-at-0)), with conflicting explanations: abuse prevention, a provisioning issue, or model access.
 - **Workaround:** Opened a support case for a Nova Lite quota in ap-southeast-2. Meanwhile, the simulator's model is Groq, chosen by config (`ALEXA_MODEL_PROVIDER=groq`, no silent fallback). Guardrails, Polly and CloudWatch keep running live, and Bedrock Converse stays implemented and unit-tested.
 - **Suggestion:** When a quota is 0, return a distinct error (`ServiceQuotaExceeded: on-demand quota for this model is 0 in this account`) instead of "too many tokens per day". Document the free-plan quota on the supported-services page, and give a self-service way to request it for one model in the project's Region.
+
+## FL-32: Groq returns `400 tool_use_failed` for some gpt-oss tool calls
+
+- **Date:** 2026-10-22
+- **Product / tool:** Groq chat completions (OpenAI-compatible), model `openai/gpt-oss-120b` (the fallback model while the Bedrock quota is 0, FL-31)
+- **Task attempted:** Multi-turn tool calling for the simulated Alexa+ (explain → prepare → confirm).
+- **Steps taken:** Called `/openai/v1/chat/completions` with `tools`, `tool_choice: auto`, `parallel_tool_calls: false` and the conversation including earlier tool results.
+- **Expected:** A tool call, or text.
+- **Actual:** About one turn in five failed with HTTP 400 `{"error":{"code":"tool_use_failed"}}`: Groq rejected a tool call the model generated. The same request usually succeeded on the next try.
+- **Severity:** Medium (with no retry, the person hears "I couldn't think that through")
+- **Time lost:** ~40 minutes (it first looked like our message mapping)
+- **Workaround:** One automatic retry on `tool_use_failed`. If a tool already answered in the turn, speak its grounded result instead of an error.
+- **Suggestion:** Retry or re-sample server-side before returning `tool_use_failed`, or document the expected rate and the recommended client retry in the tool-use guide.

@@ -310,8 +310,13 @@ EC2 the same role as an instance profile. There are no access keys anywhere. The
 - **What worked well:** the tool-calling format maps one-to-one onto our Converse-shaped history,
   so the adapter is about 150 lines with no SDK. `retry-after` on 429 makes rate limits easy to
   speak.
-- **What needs work:** the free tier allows about 8K tokens per minute for gpt-oss, so a voice
-  demo has to pace its turns. gpt-oss models don't support parallel tool calls (fine for us).
+- **What needs work:**
+  - The free tier allows about 8K tokens per minute for gpt-oss, so a voice demo has to pace its
+    turns (we pause 30 to 60 s in the e2e).
+  - Sometimes it returns `400 tool_use_failed`; we retry once (FL-32).
+  - Live, the model sometimes picked a nearby tool, asked a needless "which service?", or added a
+    cause or a note on its own. That is why the spoken reply is the tool's grounded `speak` and
+    low-risk writes need to be asked for ([live run](live-run.md)).
 - **Would I build with it again?** Yes, as a fallback. AWS stays the target.
 
 ### Amazon Bedrock Guardrails (prompt-attack filter)

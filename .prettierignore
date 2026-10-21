@@ -7,3 +7,5 @@ apps/server/src/generated
 .next
 apps/server/dist-ui
 apps/alexa-sim/next-env.d.ts
+# Written by the alexa-sim e2e (generated output)
+docs/media/alexa-demo-usage.json
