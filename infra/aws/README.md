@@ -46,3 +46,22 @@ source_profile = nightshift
 region = ap-southeast-2
 duration_seconds = 3600
 ```
+
+## EC2 (prepared, not deployed)
+
+`infra/aws/ec2/launch.sh` prints the one-time commands for a t3.micro (Ubuntu 24.04, 16 GB
+gp3, IMDSv2 with hop limit 2 so the containers get the `nightshift-app` instance role, SSH
+only from your IP). It runs nothing. `start.sh` and `stop.sh` start and stop the instance by
+its `Name=nightshift` tag. `bootstrap.sh` adds 1 GB of swap (`SWAP_GB=2` if you build images
+on the host instead of pulling them from GHCR).
+
+| While stopped         | Billed?                                                         |
+| --------------------- | --------------------------------------------------------------- |
+| Instance-hours        | No ($0.0132/h only while running)                               |
+| Auto-assigned IPv4    | No (released on stop; $0.005/h while running)                   |
+| 16 GB gp3 root volume | **Yes**, $0.096/GB-month ≈ $1.54/month until terminated         |
+| EBS snapshots         | **Yes**, if you take any                                        |
+| Elastic IP            | **Yes**, if you allocate one (not used: DuckDNS follows the IP) |
+
+On the free plan these charges draw down the credits. The $5 budget alerts track usage before
+credits are applied.

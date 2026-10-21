@@ -4,7 +4,8 @@
 #   curl -fsSLO https://raw.githubusercontent.com/<owner>/<repo>/main/infra/deploy/bootstrap.sh
 #   sudo bash bootstrap.sh https://github.com/<owner>/<repo>.git nightshift-demo.duckdns.org
 #
-# Installs Docker Engine + compose plugin (official apt repo), adds 2 GB swap when RAM < 2 GB,
+# Installs Docker Engine + compose plugin (official apt repo), adds SWAP_GB (default 1) GB swap
+# when RAM < 2 GB,
 # clones the repo to /opt/nightshift/app, creates /opt/nightshift/env/*.env from the templates
 # (chmod 600, random secrets generated, never printed) and installs the DuckDNS cron job.
 # Safe to re-run: existing env files and swap are left alone.
@@ -24,13 +25,16 @@ step() { printf '\n==> %s\n' "$*"; }
 
 step "Swap"
 mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+# 1 GB is enough when up.sh pulls the GHCR images; SWAP_GB=2 to build alexa-sim on the host.
+SWAP_GB=${SWAP_GB:-1}
+[[ $SWAP_GB =~ ^[1-8]$ ]] || { echo "SWAP_GB must be 1-8" >&2; exit 1; }
 if (( mem_kb < 2000000 )) && ! swapon --show=NAME --noheadings | grep -q '^/swapfile$'; then
-  fallocate -l 2G /swapfile
+  fallocate -l "${SWAP_GB}G" /swapfile
   chmod 600 /swapfile
   mkswap /swapfile >/dev/null
   swapon /swapfile
   grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-  echo "2 GB swap enabled"
+  echo "$SWAP_GB GB swap enabled"
 else
   echo "not needed or already on"
 fi

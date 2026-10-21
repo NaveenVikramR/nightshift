@@ -61,7 +61,7 @@ if [[ -n ${NIGHTSHIFT_IMAGE_PREFIX:-} ]]; then
   echo "==> Pull images ($NIGHTSHIFT_IMAGE_PREFIX-*:$NIGHTSHIFT_IMAGE_TAG)"
   "${COMPOSE[@]}" --profile migrate pull migrate nightshift demo-target alexa-sim
 else
-  echo "==> Build images (sequential; a 1 GB host needs the 2 GB swap from bootstrap.sh for alexa-sim)"
+  echo "==> Build images (sequential; a 1 GB host needs SWAP_GB=2 in bootstrap.sh for alexa-sim; or set NIGHTSHIFT_IMAGE_PREFIX to pull)"
   "${COMPOSE[@]}" build demo-target
   "${COMPOSE[@]}" build nightshift
   "${COMPOSE[@]}" --profile migrate build migrate
