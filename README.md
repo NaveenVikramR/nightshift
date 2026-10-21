@@ -522,7 +522,9 @@ and are refused when `NODE_ENV=production`.
  cost guard: AWS Budget $5/month → alerts $1/$3/$5 → at $5 attaches a deny policy to nightshift-app
 ```
 
-- **What runs live today:** Amazon Bedrock Guardrails, Amazon Polly and Amazon CloudWatch.
+- **What runs live today:** Amazon Bedrock Guardrails, Amazon Polly and Amazon CloudWatch. See the
+  [live run](docs/live-run.md): exact transcript, tokens per turn, Polly characters, the guardrail
+  blocking an injected commit message, cost (≈ $0.01 of AWS per conversation) and screenshots.
   **Bedrock Converse with Amazon Nova Lite is implemented and unit-tested** (against a fake
   Converse client). It becomes the model by config (`ALEXA_MODEL_PROVIDER=bedrock`) once the
   project's Bedrock quota is raised. Every on-demand Bedrock quota on this free-plan project is 0

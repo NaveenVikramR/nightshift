@@ -95,11 +95,14 @@ const page = await context.newPage();
 const pageErrors = [];
 /** Per-turn usage from /api/turn and /api/tool answers (counts only). */
 const usage = [];
+/** Exact transcript: what was said and every Nightshift answer (turns and card taps). */
+const transcript = [];
 page.on('response', async (res) => {
   const path = new URL(res.url()).pathname;
   if (!/\/api\/(turn|tool)$/.test(path) || res.request().method() !== 'POST') return;
   const body = await res.json().catch(() => null);
   if (!body) return;
+  if (path.endsWith('tool') && body.speak) transcript.push(`NIGHTSHIFT (card): ${body.speak}`);
   usage.push({
     kind: path.endsWith('turn') ? 'turn' : 'card',
     model: body.model ?? null,
@@ -113,8 +116,8 @@ page.on('response', async (res) => {
 });
 const pause = () => (TURN_PAUSE_MS ? sleep(TURN_PAUSE_MS) : Promise.resolve());
 /** Say (type) something and wait for Nightshift's caption for it. */
-async function ask(text) {
-  await pause();
+async function askOnce(text) {
+  transcript.push(`YOU: ${text}`);
   const before = await page.locator('.caption-nightshift').count();
   await page.getByLabel('Say or type').fill(text);
   await page.getByRole('button', { name: 'Send' }).click();
@@ -123,10 +126,26 @@ async function ask(text) {
     before,
     { timeout: 90_000 },
   );
-  return (await page.locator('.caption-nightshift').last().innerText()).replace(
+  const reply = (await page.locator('.caption-nightshift').last().innerText()).replace(
     /^Nightshift\s*/i,
     '',
   );
+  transcript.push(`NIGHTSHIFT: ${reply}`);
+  return reply;
+}
+/**
+ * Say something; like a person, try again (after 20 s, at most twice) when Nightshift
+ * says "Try again in a minute" (a network drop, a busy model). Retries are logged.
+ */
+async function ask(text) {
+  await pause();
+  let reply = await askOnce(text);
+  for (let i = 0; i < 2 && /Try again in a minute/i.test(reply); i++) {
+    console.log(`  (retry: "${text}" got "${reply}")`);
+    await sleep(20_000);
+    reply = await askOnce(text);
+  }
+  return reply;
 }
 page.on('pageerror', (e) => pageErrors.push(e.message));
 page.on('console', (m) => {
@@ -228,13 +247,9 @@ try {
   await sleep(600);
   await page.screenshot({ path: join(shots, 'alexa-5-phone.png') });
 
-  const conversation = await page.locator('.caption').allInnerTexts();
-  writeFileSync(
-    join(media, 'alexa-demo-conversation.txt'),
-    `${conversation.map((c) => c.replace(/\n/, ': ')).join('\n')}\n`,
-  );
+  writeFileSync(join(media, 'alexa-demo-conversation.txt'), `${transcript.join('\n')}\n`);
   console.log('--- conversation');
-  for (const c of conversation) console.log(c.replace(/\n/, ': '));
+  for (const line of transcript) console.log(line);
   writeFileSync(join(media, 'alexa-demo-usage.json'), `${JSON.stringify(usage, null, 2)}\n`);
   console.log('--- usage per turn (counts only)');
   for (const u of usage)

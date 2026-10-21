@@ -1,0 +1,93 @@
+[
+  {
+    "kind": "turn",
+    "model": "Groq · openai/gpt-oss-120b",
+    "modelCalls": 2,
+    "inputTokens": 3832,
+    "outputTokens": 82,
+    "pollyCharacters": 101,
+    "spoken": "Critical. Payments API errors at 59 percent. The Razorpay breaker is open. I can fail over to Stripe.",
+    "tools": [
+      "explain_incident:ok",
+      "model:ok"
+    ]
+  },
+  {
+    "kind": "card",
+    "model": null,
+    "modelCalls": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "pollyCharacters": 112,
+    "spoken": "This will route all payments API traffic from Razorpay to Stripe. You can switch back anytime. Shall I go ahead?",
+    "tools": [
+      "prepare_action:ok"
+    ]
+  },
+  {
+    "kind": "turn",
+    "model": "Groq · openai/gpt-oss-120b",
+    "modelCalls": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "pollyCharacters": 62,
+    "spoken": "I couldn't think that through just now. Try again in a minute.",
+    "tools": [
+      "model:error"
+    ]
+  },
+  {
+    "kind": "turn",
+    "model": "Groq · openai/gpt-oss-120b",
+    "modelCalls": 2,
+    "inputTokens": 5829,
+    "outputTokens": 95,
+    "pollyCharacters": 67,
+    "spoken": "Done. Payments API now uses Stripe. Recovered: errors at 0 percent.",
+    "tools": [
+      "human:ok",
+      "confirm_action:ok",
+      "model:ok"
+    ]
+  },
+  {
+    "kind": "turn",
+    "model": "Groq · openai/gpt-oss-120b",
+    "modelCalls": 2,
+    "inputTokens": 6236,
+    "outputTokens": 43,
+    "pollyCharacters": 0,
+    "spoken": "Something went wrong on the Nightshift server. Try again in a minute.",
+    "tools": [
+      "get_security_findings:error",
+      "model:ok"
+    ]
+  },
+  {
+    "kind": "turn",
+    "model": "Groq · openai/gpt-oss-120b",
+    "modelCalls": 2,
+    "inputTokens": 6586,
+    "outputTokens": 53,
+    "pollyCharacters": 65,
+    "spoken": "Security grade A. No open issues. Three of six checks didn't run.",
+    "tools": [
+      "get_security_findings:ok",
+      "model:ok"
+    ]
+  },
+  {
+    "kind": "turn",
+    "model": "Groq · openai/gpt-oss-120b",
+    "modelCalls": 2,
+    "inputTokens": 7233,
+    "outputTokens": 100,
+    "pollyCharacters": 138,
+    "spoken": "I left out text that looked like an instruction. Three deploys to payments API in the last 24 hours. The latest was version 1.4.1 at 1:43.",
+    "tools": [
+      "get_recent_deploys:ok",
+      "guardrail:refused",
+      "model:ok"
+    ]
+  }
+]
