@@ -77,11 +77,38 @@ describe('local scripted model intents', () => {
 });
 
 describe('grounded speech', () => {
-  it('keeps model text whose numbers come from the tool (ratios count as percents)', () => {
-    const g = groundedReply('Errors are at 45 percent; Razorpay is down.', [
-      { speak: 'x', data: { error: 0.45 } },
+  it("when a tool answered, the tool's speak is said, never the model's own cause", () => {
+    const g = groundedReply('Critical. Likely cause: a traffic spike.', [
+      {
+        speak: 'Critical. Payments API errors at 55 percent. The Razorpay breaker is open.',
+        data: {},
+      },
     ]);
-    expect(g).toEqual({ text: 'Errors are at 45 percent; Razorpay is down.', source: 'model' });
+    expect(g).toEqual({
+      text: 'Critical. Payments API errors at 55 percent. The Razorpay breaker is open.',
+      source: 'tool',
+    });
+    // The last tool with something to say wins; the model speaks only when no tool ran.
+    expect(
+      groundedReply('x', [
+        { speak: 'first', data: {} },
+        { speak: '', data: {} },
+      ]).text,
+    ).toBe('first');
+    expect(groundedReply('Which service do you mean?', [])).toEqual({
+      text: 'Which service do you mean?',
+      source: 'model',
+    });
+  });
+  it('a confirmed action\x27s measured result is spoken even if another tool ran after it', () => {
+    const g = groundedReply('x', [
+      {
+        speak: 'Done. Recovered: errors at 0.5 percent.',
+        data: { verification: { outcome: 'recovered' } },
+      },
+      { speak: 'Your note is saved.', data: {} },
+    ]);
+    expect(g.text).toBe('Done. Recovered: errors at 0.5 percent.');
   });
   it('strips markdown and URLs, and caps the length', () => {
     const g = groundedReply(`**Done.** See https://evil.example ${'word '.repeat(80)}`, []);

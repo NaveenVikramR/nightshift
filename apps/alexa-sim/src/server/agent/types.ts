@@ -48,10 +48,16 @@ export class ModelRateLimitError extends Error {
   }
 }
 
-/** Any other provider failure. Carries the HTTP status only, never the response body. */
+/**
+ * Any other provider failure. Carries the HTTP status and the provider's short
+ * error code (e.g. "tool_use_failed"), never the response body or message text.
+ */
 export class ModelError extends Error {
-  constructor(readonly status: number) {
-    super(`model error ${status}`);
+  constructor(
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(`model error ${status}${code ? ` ${code}` : ''}`);
     this.name = 'ModelError';
   }
 }

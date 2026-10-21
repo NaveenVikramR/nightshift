@@ -9,8 +9,9 @@ import type { McpTool } from '../mcp';
 import { speakAndData, type McpToolResult } from '../mcp';
 import type { DailyCap, RateLimiter, Usage } from '../limits';
 import { TimeoutError, withTimeout } from '../limits';
-import { log } from '../log';
+import { errorFields, log } from '../log';
 import type { Session, TraceEntry } from '../sessions';
+import { compactForModel } from './compact';
 import { checkAgentConfirm } from './guard';
 import {
   GUARDRAIL_INPUT_SPOKEN,
@@ -31,7 +32,6 @@ import {
   isToolUse,
   type ContentBlock,
   type Message,
-  ModelRateLimitError,
   type ModelClient,
   type ModelResponse,
 } from './types';
@@ -203,7 +203,7 @@ async function callTool(
         deps.guard!.check(texts, signal),
       );
     } catch (err) {
-      log.warn('guardrail check failed', { error: err instanceof Error ? err.name : 'unknown' });
+      log.warn('guardrail check failed', errorFields(err));
       verdict = 'unchecked';
     }
     if (verdict !== 'allowed') {
@@ -226,6 +226,8 @@ async function callTool(
       }
     }
   }
+  // The model gets the facts, not the card's chart series (cost, provider request limits).
+  data = compactForModel(data);
   const entry: TraceEntry = {
     turn: session.turn,
     at: new Date(now()).toISOString(),
@@ -276,11 +278,10 @@ export async function runTurn(
   let toolBlocked = false;
   const nowIso = () => new Date((deps.now ?? Date.now)()).toISOString();
   const result = (reply: string, replySource: TurnResult['replySource']): TurnResult => {
-    if (toolBlocked && replySource !== 'guard')
-      reply =
-        words(`${GUARDRAIL_SPOKEN} ${reply}`) <= 30
-          ? `${GUARDRAIL_SPOKEN} ${reply}`
-          : GUARDRAIL_SPOKEN;
+    // Say that outside text was left out when it fits the voice budget; otherwise the
+    // grounded answer wins (the block stays visible in the trace and the audit log).
+    if (toolBlocked && replySource !== 'guard' && words(`${GUARDRAIL_SPOKEN} ${reply}`) <= 30)
+      reply = `${GUARDRAIL_SPOKEN} ${reply}`;
     return { reply, replySource, cards, trace, modelLabel, stats };
   };
 
@@ -293,7 +294,7 @@ export async function runTurn(
         deps.guard!.check([utterance.slice(0, 500)], signal),
       );
     } catch (err) {
-      log.warn('guardrail check failed', { error: err instanceof Error ? err.name : 'unknown' });
+      log.warn('guardrail check failed', errorFields(err));
       verdict = 'unchecked';
     }
     if (verdict === 'allowed') return undefined;
@@ -330,6 +331,7 @@ export async function runTurn(
     // Trimmed once per turn: confirm_action only once something is prepared.
     const offered = toolsForTurn(all, {
       role: session.role,
+      utterance,
       pendingConfirmation: session.prepared.size > 0,
       inHistory: toolNamesIn(session.history),
     });
@@ -488,12 +490,31 @@ export async function runTurn(
     session.trace.push(...done.trace);
     return done;
   } catch (err) {
-    const timeout = err instanceof TimeoutError;
-    const busy = err instanceof ModelRateLimitError;
+    // Match by name: a bundler can duplicate error classes across chunks (instanceof fails).
+    const name = err instanceof Error ? err.name : 'unknown';
+    const timeout = name === 'TimeoutError';
+    const busy = name === 'ModelRateLimitError';
     if (busy) deps.usage.add('modelRateLimited');
-    log.warn('turn failed', { error: err instanceof Error ? err.name : 'unknown', timeout });
+    const e = err as { status?: unknown; code?: unknown; message?: unknown };
+    log.warn('turn failed', {
+      error: name,
+      timeout,
+      ...(name === 'ModelError' && {
+        status: typeof e.status === 'number' ? e.status : null,
+        code: typeof e.code === 'string' ? e.code : null,
+      }),
+      // Programming errors only (never provider bodies or user text).
+      ...(name === 'TypeError' && { detail: String(e.message).slice(0, 160) }),
+    });
     trace.push(modelEntry());
     session.trace.push(...trace);
+    // A tool already answered (e.g. confirm_action ran and was verified): say its grounded
+    // result rather than an error, because the action did happen.
+    if (answered.length) {
+      const g = groundedReply('', answered);
+      closeTurn(session.history, g.text);
+      return { reply: g.text, replySource: 'tool', cards, trace, modelLabel, stats };
+    }
     const reply = busy
       ? 'The model is busy right now. Try again in a minute.'
       : timeout

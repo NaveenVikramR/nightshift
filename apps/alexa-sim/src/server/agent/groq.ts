@@ -181,7 +181,21 @@ export class GroqModel implements ModelClient {
     this.label = `Groq · ${model}`;
   }
 
+  /**
+   * One retry for `tool_use_failed` (400): Groq rejects a tool call the model
+   * generated malformed; a second sample usually succeeds. Nothing else is retried.
+   */
   async converse(req: ModelRequest): Promise<ModelResponse> {
+    try {
+      return await this.once(req);
+    } catch (err) {
+      if (err instanceof ModelError && err.code === 'tool_use_failed' && !req.signal?.aborted)
+        return this.once(req);
+      throw err;
+    }
+  }
+
+  private async once(req: ModelRequest): Promise<ModelResponse> {
     const res = await this.post(`${this.baseUrl}/chat/completions`, {
       headers: {
         authorization: `Bearer ${this.#apiKey}`,
@@ -194,7 +208,16 @@ export class GroqModel implements ModelClient {
       const after = Number(res.headers.get('retry-after'));
       throw new ModelRateLimitError(Number.isFinite(after) && after > 0 ? after : undefined);
     }
-    if (res.status < 200 || res.status >= 300) throw new ModelError(res.status);
+    if (res.status < 200 || res.status >= 300) {
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: { code?: unknown; type?: unknown };
+      };
+      const code = body.error?.code ?? body.error?.type;
+      throw new ModelError(
+        res.status,
+        typeof code === 'string' && /^[\w.-]{1,64}$/.test(code) ? code : undefined,
+      );
+    }
     return fromChatCompletion((await res.json()) as ChatCompletion);
   }
 

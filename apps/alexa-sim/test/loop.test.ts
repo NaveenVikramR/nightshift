@@ -27,7 +27,11 @@ describe('agent loop', () => {
       TOOLS.map((t) => t.name).filter((n) => n !== 'confirm_action'),
     );
     expect(mcp.calls).toEqual([{ name: 'explain_incident', args: { service: 'payments' } }]);
-    expect(turn.reply).toBe('Critical. Payments API errors at 45 percent.');
+    // Grounded: the tool's own speak, not the model's paraphrase.
+    expect(turn.reply).toBe(
+      'Critical. Payments API errors at 45 percent for 4 minutes. The Razorpay breaker is open. I can fail over to Stripe.',
+    );
+    expect(turn.replySource).toBe('tool');
     expect(turn.cards.map((c) => c.resourceUri)).toEqual(['ui://nightshift/incident.html']);
     expect(turn.trace.map((t) => [t.tool, t.outcome])).toEqual([
       ['explain_incident', 'ok'],

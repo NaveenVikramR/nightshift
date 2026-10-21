@@ -3,6 +3,7 @@
  * default provider chain: the EC2 instance role in prod, a local profile in
  * development. Never from code or a committed .env.
  */
+import { awsClientConfig } from '../awsClient';
 import {
   BedrockRuntimeClient,
   ConverseCommand,
@@ -67,7 +68,7 @@ export class BedrockModel implements ModelClient {
   }
 
   static fromRegion(modelId: string, region: string): BedrockModel {
-    return new BedrockModel(modelId, new BedrockRuntimeClient({ region }));
+    return new BedrockModel(modelId, new BedrockRuntimeClient(awsClientConfig(region)));
   }
 
   async converse(req: ModelRequest): Promise<ModelResponse> {

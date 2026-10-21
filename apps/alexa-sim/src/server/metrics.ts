@@ -3,6 +3,7 @@
  * dimensions, five metrics, one PutMetricData per turn (or card tap). Counts
  * only, never content. Fire-and-forget: a failure is logged and never breaks a turn.
  */
+import { awsClientConfig } from './awsClient';
 import {
   CloudWatchClient,
   PutMetricDataCommand,
@@ -42,7 +43,7 @@ export class CloudWatchMetrics implements Metrics {
   ) {}
 
   static fromRegion(region: string): CloudWatchMetrics {
-    return new CloudWatchMetrics(new CloudWatchClient({ region }));
+    return new CloudWatchMetrics(new CloudWatchClient(awsClientConfig(region)));
   }
 
   record(m: TurnMetrics): void {

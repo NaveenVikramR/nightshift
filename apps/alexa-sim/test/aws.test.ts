@@ -16,6 +16,7 @@ import {
 } from '../src/server/agent/guardrail';
 import { runCardTool, runTurn } from '../src/server/agent/loop';
 import { systemPrompt } from '../src/server/agent/system';
+import { compactForModel } from '../src/server/agent/compact';
 import { firstSentence, slimSchema, toolsForTurn, toSpecs } from '../src/server/agent/tools';
 import { DailyCap, Usage } from '../src/server/limits';
 import { CloudWatchMetrics, NAMESPACE } from '../src/server/metrics';
@@ -78,7 +79,12 @@ describe('tool trimming (cost)', () => {
   const none = new Set<string>();
   it('viewers get read tools only; responders get confirm_action only once something is prepared', () => {
     const names = (role: 'viewer' | 'responder', pending: boolean, inHistory = none) =>
-      toolsForTurn(TOOLS, { role, pendingConfirmation: pending, inHistory }).map((t) => t.name);
+      toolsForTurn(TOOLS, {
+        role,
+        utterance: 'status',
+        pendingConfirmation: pending,
+        inHistory,
+      }).map((t) => t.name);
     expect(names('viewer', true)).toEqual([
       'get_ops_brief',
       'explain_incident',
@@ -90,6 +96,27 @@ describe('tool trimming (cost)', () => {
     expect(names('responder', true)).toContain('confirm_action');
     // A tool already in the history stays in toolConfig (Converse needs it).
     expect(names('responder', false, new Set(['confirm_action']))).toContain('confirm_action');
+  });
+
+  it('low-risk writes (note, ack, silence) only when the person asks for them', () => {
+    const writes = [
+      { name: 'add_incident_note', description: 'n', inputSchema: {}, resourceUri: null },
+      { name: 'acknowledge_alert', description: 'a', inputSchema: {}, resourceUri: null },
+      { name: 'silence_alert', description: 's', inputSchema: {}, resourceUri: null },
+    ];
+    const names = (utterance: string) =>
+      toolsForTurn([...TOOLS, ...writes], {
+        role: 'responder',
+        utterance,
+        pendingConfirmation: true,
+        inHistory: new Set(),
+      }).map((t) => t.name);
+    expect(names('Yes')).not.toContain('add_incident_note');
+    expect(names('Yes')).toContain('confirm_action');
+    expect(names('Add a note: failover done')).toContain('add_incident_note');
+    expect(names('ack it')).toContain('acknowledge_alert');
+    expect(names('silence that for an hour')).toContain('silence_alert');
+    expect(names('notebook')).not.toContain('add_incident_note');
   });
 
   it('one-sentence descriptions; schemas without descriptions (property names kept)', () => {
@@ -218,7 +245,7 @@ describe('Bedrock Guardrails', () => {
     );
     expect(JSON.stringify(model.requests[1]!.messages)).toContain(WITHHELD_UNCHECKED);
     expect(turn.trace[1]).toMatchObject({ tool: 'guardrail', outcome: 'error' });
-    expect(turn.reply).toBe('One deploy.');
+    expect(turn.reply).toBe('One deploy in the last hour: version 1.4.2 at 2:41.');
   });
 
   it('allowed text passes through unchanged', async () => {
@@ -404,5 +431,23 @@ describe('CloudWatch metrics', () => {
     });
     await new Promise((r) => setTimeout(r, 0));
     expect(m.failures).toBe(1);
+  });
+});
+
+describe('tool data for the model is compacted', () => {
+  it('drops the largest arrays first and keeps the facts', () => {
+    const data = {
+      confirmationId: 'cfm_1',
+      causes: [{ id: 'provider_failure', suggestedActions: [{ action: 'failover_provider' }] }],
+      series: { errorRate: Array.from({ length: 400 }, (_, i) => [i, 0.45]) },
+    };
+    const c = compactForModel(data, 500);
+    expect(JSON.stringify(c).length).toBeLessThanOrEqual(500);
+    expect(c.series.errorRate).toEqual({ omitted: 400 });
+    expect(c.causes).toEqual(data.causes);
+    expect(c.confirmationId).toBe('cfm_1');
+    expect(data.series.errorRate).toHaveLength(400); // the card's copy is untouched
+    const small = { a: 1 };
+    expect(compactForModel(small)).toBe(small);
   });
 });

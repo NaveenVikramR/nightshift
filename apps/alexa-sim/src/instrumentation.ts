@@ -5,6 +5,8 @@
 export async function register(): Promise<void> {
   if (process.env['NEXT_RUNTIME'] !== 'nodejs') return;
   const { checkStartup } = await import('./server/runtime');
+  const { watchEventLoop } = await import('./server/log');
+  watchEventLoop();
   try {
     await checkStartup();
   } catch (err) {

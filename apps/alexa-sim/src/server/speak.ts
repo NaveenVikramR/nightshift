@@ -4,7 +4,7 @@
  * grounded reply or a tool's `speak`); the browser never chooses what Polly says.
  */
 import { randomBytes } from 'node:crypto';
-import { log } from './log';
+import { errorFields, log } from './log';
 import type { Session } from './sessions';
 import type { Speech, VoiceId } from './tts';
 
@@ -18,7 +18,7 @@ export async function speakReply(
   voice: VoiceId,
 ): Promise<{ audio: AudioRef; characters: number }> {
   try {
-    const s = await speech.synthesize(text, voice, AbortSignal.timeout(10_000));
+    const s = await speech.synthesize(text, voice, AbortSignal.timeout(15_000));
     if (s.provider === 'polly') {
       const id = randomBytes(12).toString('base64url');
       session.audio.clear();
@@ -28,7 +28,7 @@ export async function speakReply(
     if (s.provider === 'browser') return { audio: { provider: 'browser' }, characters: 0 };
     log.warn('speech skipped', { reason: s.reason });
   } catch (err) {
-    log.warn('speech failed', { error: err instanceof Error ? err.name : 'unknown' });
+    log.warn('speech failed', errorFields(err));
   }
   return { audio: { provider: 'none' }, characters: 0 };
 }

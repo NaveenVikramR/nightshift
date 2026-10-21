@@ -8,6 +8,7 @@
  * Nightshift's server-side rules (two-phase actions, roles, allowlists) remain
  * the primary protection; this only keeps injected instructions away from the model.
  */
+import { awsClientConfig } from '../awsClient';
 import { ApplyGuardrailCommand, BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import type { ApplyGuardrailCommandOutput } from '@aws-sdk/client-bedrock-runtime';
 
@@ -18,8 +19,7 @@ export interface GuardrailRef {
 
 export const WITHHELD_FLAGGED = '[withheld: flagged by guardrail]';
 export const WITHHELD_UNCHECKED = '[withheld: guardrail unavailable]';
-export const GUARDRAIL_SPOKEN =
-  'Some text in that result looked like an instruction, so I left it out.';
+export const GUARDRAIL_SPOKEN = 'I left out text that looked like an instruction.';
 /** Spoken when the person's own words trip the filter. */
 export const GUARDRAIL_INPUT_SPOKEN = 'That looked like an instruction to me, so I left it out.';
 export const GUARDRAIL_UNCHECKED_SPOKEN =
@@ -50,7 +50,7 @@ export class BedrockTextGuard implements TextGuard {
   }
 
   static fromRegion(ref: GuardrailRef, region: string): BedrockTextGuard {
-    return new BedrockTextGuard(ref, new BedrockRuntimeClient({ region }));
+    return new BedrockTextGuard(ref, new BedrockRuntimeClient(awsClientConfig(region)));
   }
 
   async check(texts: string[], signal?: AbortSignal): Promise<'allowed' | 'blocked'> {

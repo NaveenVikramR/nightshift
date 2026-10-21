@@ -3,6 +3,7 @@
  * provider chain (instance role on EC2, AWS profile locally). The browser's own
  * speechSynthesis is for tests and the local scripted e2e only.
  */
+import { awsClientConfig } from './awsClient';
 import {
   PollyClient,
   SynthesizeSpeechCommand,
@@ -57,7 +58,7 @@ export class PollySpeech implements Speech {
   ) {}
 
   static fromRegion(region: string, cap: DailyCap, usage: Usage, charCap: DailyCap): PollySpeech {
-    return new PollySpeech(new PollyClient({ region }), cap, usage, charCap);
+    return new PollySpeech(new PollyClient(awsClientConfig(region)), cap, usage, charCap);
   }
 
   async synthesize(text: string, voice: VoiceId, signal?: AbortSignal): Promise<SpeechResult> {

@@ -17,8 +17,21 @@ export const WRITE_TOOLS = new Set([
   'add_incident_note',
 ]);
 
+/**
+ * Low-risk writes are offered only when the person's words ask for them: in a live
+ * run a model added an incident note nobody asked for. Fixes always go through
+ * prepare_action (two-phase), so it is offered to responders on every turn.
+ */
+const ASKED_FOR: Record<string, RegExp> = {
+  add_incident_note: /\b(note|record|log|write (it )?down|jot)\b/i,
+  acknowledge_alert: /\b(ack|acknowledge|acknowledged|i'?m on it|taking it)\b/i,
+  silence_alert: /\b(silence|mute|snooze|quiet)\b/i,
+};
+
 export interface TurnToolContext {
   role: Role;
+  /** The person's words this turn (low-risk writes need to be asked for). */
+  utterance: string;
   /** This session holds a prepared confirmation (from an earlier turn or a card). */
   pendingConfirmation: boolean;
   /** Tool names already in the history (Converse needs them in toolConfig). */
@@ -30,6 +43,8 @@ export function toolsForTurn(tools: McpTool[], ctx: TurnToolContext): McpTool[] 
     if (ctx.inHistory.has(t.name)) return true;
     if (!WRITE_TOOLS.has(t.name)) return true;
     if (ctx.role !== 'responder') return false;
+    const asked = ASKED_FOR[t.name];
+    if (asked) return asked.test(ctx.utterance);
     return t.name !== 'confirm_action' || ctx.pendingConfirmation;
   });
 }

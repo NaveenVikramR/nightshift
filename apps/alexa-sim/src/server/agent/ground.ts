@@ -1,9 +1,4 @@
-/**
- * Keep spoken numbers grounded (like Nightshift's narrator guard): when one tool
- * answered the question and the model's reply mentions a number that isn't in
- * that tool's result, say the tool's own `speak` instead. Replies are capped to
- * a voice length either way.
- */
+/** Spoken replies: grounded in tool results, plain text, voice length. */
 const NUMBER = /\d+(?:[.,]\d+)?/g;
 const MAX_WORDS = 40;
 
@@ -30,26 +25,24 @@ function plain(text: string): string {
     .trim();
 }
 
+/**
+ * Grounded speech (invariant 5): when a tool answered this turn, say the last
+ * tool's server-written `speak` (deterministic, from measured evidence). The
+ * model's own words are spoken only when no tool ran (a greeting or a short
+ * clarifying question), after stripping markdown and capping the length. A live
+ * run showed why: asked "what's wrong", a model added a cause ("a traffic
+ * spike") that no tool had found; number checks alone don't catch that.
+ */
 export function groundedReply(
   modelText: string,
   toolResults: { speak: string; data: unknown }[],
 ): { text: string; source: 'model' | 'tool' } {
+  // A confirmed action's measured result outranks anything after it.
+  const confirmed = toolResults.find(
+    (r) => typeof (r.data as { verification?: unknown } | null)?.verification === 'object',
+  );
+  const spoken = confirmed ?? [...toolResults].reverse().find((r) => r.speak.trim());
+  if (spoken) return { text: capWords(spoken.speak), source: 'tool' };
   const reply = plain(modelText);
-  const last = toolResults[toolResults.length - 1];
-  if (!reply) return { text: capWords(last?.speak || 'Done.'), source: last ? 'tool' : 'model' };
-  if (toolResults.length === 1 && last) {
-    const evidence = `${last.speak} ${JSON.stringify(last.data)}`;
-    const allowed = new Set(numbersIn(evidence));
-    // Percent values: data has ratios (0.45) while speech says 45; allow both forms.
-    for (const n of numbersIn(JSON.stringify(last.data))) {
-      const v = Number(n);
-      if (v > 0 && v <= 1) {
-        allowed.add(String(Math.round(v * 100)));
-        allowed.add(String(Number((v * 100).toFixed(1))));
-      }
-    }
-    if (numbersIn(reply).some((n) => !allowed.has(n)))
-      return { text: capWords(last.speak), source: 'tool' };
-  }
-  return { text: capWords(reply), source: 'model' };
+  return { text: capWords(reply || 'Done.'), source: 'model' };
 }

@@ -93,7 +93,9 @@ describe('Groq provider (fake HTTP client)', () => {
       tool_call_id: 'call_1',
       name: 'explain_incident',
     });
-    expect(turn.reply).toBe('Critical. Payments API errors at 45 percent.');
+    expect(turn.reply).toBe(
+      'Critical. Payments API errors at 45 percent for 4 minutes. The Razorpay breaker is open. I can fail over to Stripe.',
+    );
     expect(turn.stats).toMatchObject({ modelCalls: 2, inputTokens: 2000, outputTokens: 80 });
     expect(turn.trace.at(-1)!.note).toMatch(/^Groq · openai\/gpt-oss-120b: 2 calls/);
     expect(historyIsValid(session.history)).toBe(true);
@@ -217,5 +219,62 @@ describe('Groq provider (fake HTTP client)', () => {
     expect(
       buildChatRequest('llama-3.3-70b-versatile', { system: 's', messages: [], tools: [] }),
     ).not.toHaveProperty('reasoning_effort');
+  });
+});
+
+describe('Groq tool_use_failed', () => {
+  it('retries once, then gives up with the error', async () => {
+    let n = 0;
+    const post: HttpPost = async () => {
+      n++;
+      return n === 1
+        ? {
+            status: 400,
+            headers: { get: () => null },
+            json: async () => ({ error: { code: 'tool_use_failed' } }),
+          }
+        : {
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({
+              choices: [{ finish_reason: 'stop', message: { content: 'ok' } }],
+            }),
+          };
+    };
+    const r = await new GroqModel('openai/gpt-oss-120b', KEY, post).converse({
+      system: 's',
+      messages: [],
+      tools: [],
+    });
+    expect(n).toBe(2);
+    expect(r.message.content).toEqual([{ text: 'ok' }]);
+
+    let m = 0;
+    const always: HttpPost = async () => (
+      m++,
+      {
+        status: 400,
+        headers: { get: () => null },
+        json: async () => ({ error: { code: 'tool_use_failed' } }),
+      }
+    );
+    const err = await new GroqModel('openai/gpt-oss-120b', KEY, always)
+      .converse({ system: 's', messages: [], tools: [] })
+      .catch((e) => e);
+    expect(m).toBe(2);
+    expect(err).toMatchObject({ name: 'ModelError', status: 400, code: 'tool_use_failed' });
+  });
+});
+
+describe('a late model failure after a tool answered', () => {
+  it('speaks the grounded tool result (the action happened), not an error', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const groq = fakeGroq([{ tool: 'get_ops_brief' }, { status: 500 }]);
+    const deps = makeDeps(new GroqModel('openai/gpt-oss-120b', KEY, groq.post));
+    const { session } = makeSession();
+    const turn = await runTurn(deps, session, 'How is everything?');
+    expect(turn.reply).toBe('Critical: payments API errors at 45 percent.');
+    expect(turn.replySource).toBe('tool');
+    expect(historyIsValid(session.history)).toBe(true);
   });
 });

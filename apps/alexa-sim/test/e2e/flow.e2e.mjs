@@ -242,6 +242,14 @@ try {
       `${u.kind} | ${u.model ?? '-'} | calls ${u.modelCalls} | in ${u.inputTokens} | out ${u.outputTokens} | polly chars ${u.pollyCharacters} | ${u.tools.join(', ')}`,
     );
 } finally {
+  // Always show what happened so far (counts and server-authored text only).
+  console.log('--- turns so far');
+  for (const u of usage) console.log(JSON.stringify(u));
+  const said = await page
+    .locator('.caption')
+    .allInnerTexts()
+    .catch(() => []);
+  for (const c of said) console.log(c.replace(/\n/, ': '));
   await page
     .getByText('Demo controls')
     .click()
