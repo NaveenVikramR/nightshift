@@ -169,8 +169,13 @@ chromium`) renders every card through a real ext-apps `AppBridge` test host (`te
   system prompt `agent/system.ts` mirrors the Agent Skill (test enforces), **human-yes guard**
   (`agent/guard.ts`: model confirm only for a confirmation prepared here in an EARLIER turn + explicit
   yes now; card Confirm = yes), grounded speech (`agent/ground.ts`), limits (`limits.ts`: 6 tools/turn,
-  40 turns, 20 req/10 min/token, daily caps, timeouts). Card tool calls (`runCardTool`) are recorded in
-  the conversation. Speech: `tts.ts` (Polly | browser). Routes `src/app/api/*` all go through
+  40 turns, 20 req/10 min/token, daily caps 100 model / 300 Polly / 40k chars, timeouts). Card tool
+  calls (`runCardTool`) are recorded in the conversation and spoken (`speak.ts`). Speech: `tts.ts`
+  (Polly | browser). AWS (ap-southeast-2, `infra/aws/`): Nova Lite on-demand, `agent/tools.ts` trims
+  tools per turn, `agent/guardrail.ts` ApplyGuardrail over `{untrusted,text}` in tool results (fail
+  closed), `metrics.ts` CloudWatch (namespace Nightshift, 5 counts). `config.ts` refuses
+  scripted/browser unless `ALLOW_SCRIPTED_MODEL=true` and never in production; `instrumentation.ts`
+  exits on bad config or unresolvable credentials. Locally run with `AWS_PROFILE=nightshift-app`. Routes `src/app/api/*` all go through
   `server/http.ts` `guard()` (Host, Origin+CSRF on POST, Sec-Fetch-Site on GET). `src/proxy.ts` = page
   nonce CSP (needs the `'/'` matcher because of basePath, FL-25). Cards: `/api/card` + sandboxed
   iframe + ext-apps `AppBridge` (`src/client/CardHost.tsx`). No AWS keys anywhere: default

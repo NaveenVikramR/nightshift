@@ -454,14 +454,14 @@ An Echo Show-style web app at `/alexa`. It is a **real MCP client** of Nightshif
 client SDK over Streamable HTTP, with one MCP session per browser session, authenticated with the
 person's token. An agent loop picks Nightshift tools from `tools/list`.
 
-| Piece         | How                                                                                                                                                                                                    |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Sign in       | A Nightshift token is kept only in server memory (an httpOnly, SameSite=Strict cookie holds a random id). The role is shown.                                                                           |
-| Agent         | Bedrock Converse with tool use. The system prompt comes from the [Agent Skill](skills/nightshift-on-call/SKILL.md). Locally a **scripted model** drives the same loop, so no AWS is needed.            |
-| Voice         | Push-to-talk (Web Speech API, Chrome), a text box that is always visible, quick-start chips, barge-in, captions. Speech from Polly (neural, Indian or US English), or the browser's own voice locally. |
-| Screen        | Nightshift's MCP Apps cards in sandboxed iframes via the ext-apps AppBridge. Card buttons work through the same two-phase flow.                                                                        |
-| Judges' panel | "What Nightshift did": tools, redacted inputs, prepare → your yes → confirm, and the measured verification.                                                                                            |
-| Demo controls | Responder only: outage, bad deploy, latency, brute force, weak headers, reset. Server-side; the admin token never reaches the browser.                                                                 |
+| Piece         | How                                                                                                                                                                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sign in       | A Nightshift token is kept only in server memory (an httpOnly, SameSite=Strict cookie holds a random id). The role is shown.                                                                                                                                         |
+| Agent         | Amazon Bedrock Converse with tool use (Nova Lite), Bedrock Guardrails on the person's words and on outside text in tool results. The system prompt comes from the [Agent Skill](skills/nightshift-on-call/SKILL.md). A scripted model drives the same loop in tests. |
+| Voice         | Push-to-talk (Web Speech API, Chrome), a text box that is always visible, quick-start chips, barge-in, captions. Amazon Polly (neural, Indian or US English) speaks every answer, card taps included.                                                                |
+| Screen        | Nightshift's MCP Apps cards in sandboxed iframes via the ext-apps AppBridge. Card buttons work through the same two-phase flow.                                                                                                                                      |
+| Judges' panel | "What Nightshift did": the model name, tools, redacted inputs, prepare → your yes → confirm, the measured verification, guardrail blocks and tokens per turn.                                                                                                        |
+| Demo controls | Responder only: outage, bad deploy, latency, brute force, weak headers, reset. Server-side; the admin token never reaches the browser.                                                                                                                               |
 
 **Safety, on top of Nightshift's own checks:**
 
@@ -476,49 +476,83 @@ person's token. An agent loop picks Nightshift tools from `tools/list`.
 
 **Cost safeguards** (env, defaults shown):
 
-| Guard                            | Default                         |
-| -------------------------------- | ------------------------------- |
-| Tool calls per turn              | 6                               |
-| Turns per session                | 40                              |
-| Requests per token               | 20 per 10 min                   |
-| Daily model requests (all users) | 500                             |
-| Daily Polly requests             | 1,500, each ≤ 600 characters    |
-| Timeouts                         | model 20 s, MCP 35 s, turn 60 s |
+| Guard                            | Default                                                     |
+| -------------------------------- | ----------------------------------------------------------- |
+| Tool calls per turn              | 6                                                           |
+| Turns per session                | 40                                                          |
+| Requests per token               | 20 per 10 min                                               |
+| Daily model requests (all users) | 100                                                         |
+| Daily Polly                      | 300 requests, 40,000 characters, ≤ 600 per request          |
+| Timeouts                         | model 20 s, MCP 35 s, turn 60 s                             |
+| Per call                         | only the tools this turn can use, one-sentence descriptions |
 
-Logs hold counts only, never text or tokens. `GET /alexa/api/usage` shows today's counters.
+Logs hold counts only (including tokens per turn), never text or tokens of the person.
+`GET /alexa/api/usage` shows today's counters.
 
-**Run locally** (stack and Nightshift dev server running):
+**Run locally** (stack and Nightshift dev server running; AWS as in [AWS architecture](#aws-architecture)):
 
 ```bash
-cp apps/alexa-sim/.env.example apps/alexa-sim/.env.local   # set DEMO_ADMIN_TOKEN (infra/.env)
-npm run dev -w @nightshift/alexa-sim                         # http://127.0.0.1:3002/alexa
+cp apps/alexa-sim/.env.example apps/alexa-sim/.env.local   # set DEMO_ADMIN_TOKEN (infra/.env) and the guardrail id
+aws login --profile nightshift                              # browser sign-in, no keys
+AWS_PROFILE=nightshift-app npm run dev -w @nightshift/alexa-sim   # http://127.0.0.1:3002/alexa
 ALEXA_TOKEN_FILE=<file with a responder token> npm run e2e -w @nightshift/alexa-sim
 ```
 
-**Switch to Bedrock and Polly** (prod, `alexa.env`):
+The server refuses to start without the Bedrock model, Region or AWS credentials. It never falls
+back silently. The scripted model and browser voice exist for tests and the no-AWS e2e only
+(`MODEL_PROVIDER=scripted TTS_PROVIDER=browser ALLOW_SCRIPTED_MODEL=true`, `next dev` only),
+and are refused when `NODE_ENV=production`.
 
-1. Set `MODEL_PROVIDER=bedrock`, `BEDROCK_MODEL_ID=<a model or inference profile with tool use>`,
-   `AWS_REGION` and `TTS_PROVIDER=polly`.
-2. Give the EC2 **instance role** only this. No access keys anywhere:
+## AWS architecture
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel"],
-      "Resource": [
-        "arn:aws:bedrock:*::foundation-model/*",
-        "arn:aws:bedrock:*:*:inference-profile/*"
-      ]
-    },
-    { "Effect": "Allow", "Action": ["polly:SynthesizeSpeech"], "Resource": "*" }
-  ]
-}
+```
+ laptop now / EC2 t3.micro later (ap-southeast-2)
+ ┌──────────────────────────────────────────────────────────┐
+ │ alexa-sim (Next.js)                                      │
+ │   agent loop ──Converse + tool use──▶ Amazon Bedrock     │──▶ Nova Lite (on-demand)
+ │      │            guardrailConfig ──▶ Bedrock Guardrails │    prompt-attack filter
+ │      │ tool results' untrusted text ─ApplyGuardrail─────▶│
+ │      ├──MCP tools/call (Streamable HTTP)──▶ Nightshift   │──▶ Prometheus / Alertmanager / GitHub
+ │      ├──SynthesizeSpeech──▶ Amazon Polly (Kajal, Joanna) │
+ │      └──PutMetricData──▶ CloudWatch (namespace Nightshift, 5 counts) │
+ └──────────────────────────────────────────────────────────┘
+ credentials: role nightshift-app (assumed locally from `aws login`; instance profile on EC2)
+ cost guard: AWS Budget $5/month → alerts $1/$3/$5 → at $5 attaches a deny policy to nightshift-app
 ```
 
-Narrow the Bedrock resources to your model's ARNs once it's chosen.
+- **Region:** everything is in ap-southeast-2. No cross-Region inference profiles (`apac.*`,
+  `global.*`): the project can't use them, and on-demand Nova Lite runs in Sydney.
+- **No keys:** the SDK default chain loads the role. At startup, alexa-sim resolves credentials
+  once and exits if that fails.
+- **Guardrails are the second layer.** Nightshift's server-side rules are primary: two-phase
+  confirmation, the human-yes guard, roles, allowlists, and untrusted text that is never spoken.
+  Guardrails only keep injected instructions in commit messages, alert annotations and notes away
+  from the model. A block is spoken as a short safe line and recorded in the trace and audit log.
+- **Least privilege** ([infra/aws/iam/app-access-policy.json](infra/aws/iam/app-access-policy.json)):
+
+| Action                                       | Resource / condition                                                     |
+| -------------------------------------------- | ------------------------------------------------------------------------ |
+| `bedrock:InvokeModel`, `…WithResponseStream` | `arn:aws:bedrock:ap-southeast-2::foundation-model/amazon.nova-lite-v1:0` |
+| `bedrock:ApplyGuardrail`                     | `arn:aws:bedrock:ap-southeast-2:ACCOUNT_ID:guardrail/*`                  |
+| `polly:SynthesizeSpeech`                     | `aws:RequestedRegion = ap-southeast-2`                                   |
+| `cloudwatch:PutMetricData`                   | `cloudwatch:namespace = Nightshift`, Region as above                     |
+
+- **Cost per conversation (estimate):** about $0.02.
+  - Bedrock: 10 Converse calls × ~2.5K input tokens ≈ $0.0016, plus output ≈ $0.0003.
+  - Polly: ~800 characters ≈ $0.013.
+  - Guardrails: ≈ $0.002.
+  - CloudWatch: within the free tier.
+  - The daily caps bound the worst case at about $1.30 a day: 100 model calls plus 40,000 Polly
+    characters.
+- **Status:**
+  - **Verified live:** Guardrails (an injected commit message → `GUARDRAIL_INTERVENED`), Polly
+    (Kajal neural), CloudWatch (and the namespace deny), and credentials through
+    `nightshift-app`.
+  - **Not yet verified live:** Bedrock inference. The free-plan project has an on-demand quota
+    of 0 (FL-31) and a quota request is open. Until then the model path is covered by unit tests
+    against a fake Converse client.
+- **Setup and EC2:** [infra/aws/README.md](infra/aws/README.md) has the IAM, budget and
+  guardrail commands, the EC2 launch printer, start/stop, and what still bills when stopped.
 
 ## Proactive alerts (Telegram)
 

@@ -412,3 +412,47 @@
 - **Time lost:** ~15 minutes (including a production build to rule out our code)
 - **Workaround:** Run CSP checks against a production build only.
 - **Suggestion:** Make the dev overlay CSP-nonce aware, or note in the CSP guide that strict style policies report dev-only violations.
+
+## FL-29: Agent Toolkit for AWS crashes with `'charmap' codec` on Windows PowerShell
+
+- **Date:** 2026-10-21
+- **Product / tool:** AWS CLI 2.38.3 (`aws agent-toolkit`), Windows 10, PowerShell 5.1
+- **Task attempted:** Verify the Agent Toolkit setup by listing the remote skill catalog, as the official setup guide says.
+- **Steps taken:**
+  1. Installed AWS CLI v2 per-user with the PowerShell installer.
+  2. Ran `aws login`, then `aws configure agent-toolkit --yes --region us-east-1 --profile nightshift` (succeeded).
+  3. Ran `aws agent-toolkit list-available-skills --region us-east-1 --profile nightshift`.
+- **Expected:** A JSON list of skills.
+- **Actual:** Exit code 255: `'charmap' codec can't encode character '→' in position …`. A skill description contains `→`, and the CLI writes to the console in the Windows code page.
+- **Severity:** Medium (the documented verification step fails on a default Windows setup)
+- **Time lost:** ~20 minutes
+- **Workaround:** `$env:PYTHONUTF8='1'` (or `PYTHONIOENCODING=utf-8`) before the command.
+- **Suggestion:** Have the CLI write UTF-8 (or escape non-ASCII) for this command's output, or add the `PYTHONUTF8=1` step to setup-troubleshooting.md under Step 6.
+
+## FL-30: Account verification blocks Bedrock inference after everything else already works
+
+- **Date:** 2026-10-21
+- **Product / tool:** Amazon Bedrock Runtime (Converse), new AWS experience project (free plan), AWS SDK for JavaScript 3.1152.0
+- **Task attempted:** First live Converse call to `amazon.nova-lite-v1:0` in ap-southeast-2, right after creating IAM roles, a guardrail and a budget in the same project.
+- **Steps taken:** IAM, Budgets and `bedrock:CreateGuardrail` calls succeeded; `get-foundation-model-availability` reported `AUTHORIZED`; then `ConverseCommand` as the app role.
+- **Expected:** A model reply (model access shows as authorized).
+- **Actual:** `AccessDeniedException: Your account is currently being verified. Verification normally takes less than 2 hours.` Nothing in the console or `get-foundation-model-availability` said inference was pending verification.
+- **Severity:** Medium (cleared on its own within about an hour)
+- **Time lost:** ~15 minutes
+- **Workaround:** Waited, and kept working on code with fake SDK clients.
+- **Suggestion:** Show "account verification pending" in `get-foundation-model-availability` and on the Bedrock console's model access page, so the first call isn't a surprise.
+
+## FL-31: Every Bedrock on-demand quota is 0 (and "not adjustable") on a free-plan project
+
+- **Date:** 2026-10-21
+- **Product / tool:** Amazon Bedrock, Service Quotas, new AWS experience project on the FREE plan, ap-southeast-2
+- **Task attempted:** Run the simulated Alexa+ agent on Amazon Nova Lite on-demand (the cheapest model with Converse tool use in the project's Region).
+- **Steps taken:**
+  1. After verification cleared (FL-30), called Converse on `amazon.nova-lite-v1:0` (5 max tokens).
+  2. `aws service-quotas list-service-quotas --service-code bedrock --region ap-southeast-2`.
+- **Expected:** Bedrock is on the free plan's supported-services list, and model access is `AUTHORIZED`, so small on-demand calls should work.
+- **Actual:** `ThrottlingException: Too many tokens per day, please wait before trying again.` on the first call ever. Service Quotas shows all 62 on-demand token quotas at `0.0`, including Nova Lite tokens per minute (L-70423BF8), requests per minute (L-E386A278) and max tokens per day (L-45E0AD92), and all are marked `Adjustable: False`. Cross-Region inference, which might have a separate quota, isn't allowed on this project type. ApplyGuardrail quotas, Polly and CloudWatch were fine.
+- **Severity:** Blocker (no model inference at all; the error suggests waiting a day, which doesn't help)
+- **Time lost:** ~45 minutes, plus waiting on a support case
+- **Workaround:** Opened a support case for a Nova Lite quota in ap-southeast-2. Meanwhile, the model path is covered by unit tests against a fake Converse client. Guardrails, Polly and CloudWatch run live.
+- **Suggestion:** When a quota is 0, return a distinct error (`ServiceQuotaExceeded: on-demand quota for this model is 0 in this account`) instead of "too many tokens per day". Document the free-plan quota on the supported-services page, and give a self-service way to request it for one model in the project's Region.
