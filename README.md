@@ -454,14 +454,14 @@ An Echo Show-style web app at `/alexa`. It is a **real MCP client** of Nightshif
 client SDK over Streamable HTTP, with one MCP session per browser session, authenticated with the
 person's token. An agent loop picks Nightshift tools from `tools/list`.
 
-| Piece         | How                                                                                                                                                                                                                                                                  |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sign in       | A Nightshift token is kept only in server memory (an httpOnly, SameSite=Strict cookie holds a random id). The role is shown.                                                                                                                                         |
-| Agent         | Amazon Bedrock Converse with tool use (Nova Lite), Bedrock Guardrails on the person's words and on outside text in tool results. The system prompt comes from the [Agent Skill](skills/nightshift-on-call/SKILL.md). A scripted model drives the same loop in tests. |
-| Voice         | Push-to-talk (Web Speech API, Chrome), a text box that is always visible, quick-start chips, barge-in, captions. Amazon Polly (neural, Indian or US English) speaks every answer, card taps included.                                                                |
-| Screen        | Nightshift's MCP Apps cards in sandboxed iframes via the ext-apps AppBridge. Card buttons work through the same two-phase flow.                                                                                                                                      |
-| Judges' panel | "What Nightshift did": the model name, tools, redacted inputs, prepare → your yes → confirm, the measured verification, guardrail blocks and tokens per turn.                                                                                                        |
-| Demo controls | Responder only: outage, bad deploy, latency, brute force, weak headers, reset. Server-side; the admin token never reaches the browser.                                                                                                                               |
+| Piece         | How                                                                                                                                                                                                                                                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sign in       | A Nightshift token is kept only in server memory (an httpOnly, SameSite=Strict cookie holds a random id). The role is shown.                                                                                                                                                                                                                           |
+| Agent         | A model with tool use, chosen by config: Amazon Bedrock Converse (Nova Lite) or Groq while the Bedrock quota is 0. Bedrock Guardrails check the person's words and outside text in tool results with either model. The system prompt comes from the [Agent Skill](skills/nightshift-on-call/SKILL.md). A scripted model drives the same loop in tests. |
+| Voice         | Push-to-talk (Web Speech API, Chrome), a text box that is always visible, quick-start chips, barge-in, captions. Amazon Polly (neural, Indian or US English) speaks every answer, card taps included.                                                                                                                                                  |
+| Screen        | Nightshift's MCP Apps cards in sandboxed iframes via the ext-apps AppBridge. Card buttons work through the same two-phase flow.                                                                                                                                                                                                                        |
+| Judges' panel | "What Nightshift did": the model name, tools, redacted inputs, prepare → your yes → confirm, the measured verification, guardrail blocks and tokens per turn.                                                                                                                                                                                          |
+| Demo controls | Responder only: outage, bad deploy, latency, brute force, weak headers, reset. Server-side; the admin token never reaches the browser.                                                                                                                                                                                                                 |
 
 **Safety, on top of Nightshift's own checks:**
 
@@ -507,27 +507,40 @@ and are refused when `NODE_ENV=production`.
 
 ```
  laptop now / EC2 t3.micro later (ap-southeast-2)
- ┌──────────────────────────────────────────────────────────┐
- │ alexa-sim (Next.js)                                      │
- │   agent loop ──Converse + tool use──▶ Amazon Bedrock     │──▶ Nova Lite (on-demand)
- │      │            guardrailConfig ──▶ Bedrock Guardrails │    prompt-attack filter
- │      │ tool results' untrusted text ─ApplyGuardrail─────▶│
- │      ├──MCP tools/call (Streamable HTTP)──▶ Nightshift   │──▶ Prometheus / Alertmanager / GitHub
- │      ├──SynthesizeSpeech──▶ Amazon Polly (Kajal, Joanna) │
+ ┌──────────────────────────────────────────────────────────────────┐
+ │ alexa-sim (Next.js)                                              │
+ │   person's words ──ApplyGuardrail──▶ Amazon Bedrock Guardrails   │  prompt-attack filter
+ │   agent loop ──tool use──▶ model, chosen by ALEXA_MODEL_PROVIDER │
+ │      │                       bedrock: Converse ▶ Nova Lite       │  (quota pending, FL-31)
+ │      │                       groq:    chat completions ▶ gpt-oss │  (current live model)
+ │      ├──MCP tools/call (Streamable HTTP)──▶ Nightshift           │──▶ Prometheus / Alertmanager / GitHub
+ │      │   tool results' untrusted text ──ApplyGuardrail──▶ Guardrails │
+ │      ├──SynthesizeSpeech──▶ Amazon Polly (Kajal, Joanna)         │
  │      └──PutMetricData──▶ CloudWatch (namespace Nightshift, 5 counts) │
- └──────────────────────────────────────────────────────────┘
+ └──────────────────────────────────────────────────────────────────┘
  credentials: role nightshift-app (assumed locally from `aws login`; instance profile on EC2)
  cost guard: AWS Budget $5/month → alerts $1/$3/$5 → at $5 attaches a deny policy to nightshift-app
 ```
 
-- **Region:** everything is in ap-southeast-2. No cross-Region inference profiles (`apac.*`,
-  `global.*`): the project can't use them, and on-demand Nova Lite runs in Sydney.
-- **No keys:** the SDK default chain loads the role. At startup, alexa-sim resolves credentials
-  once and exits if that fails.
-- **Guardrails are the second layer.** Nightshift's server-side rules are primary: two-phase
-  confirmation, the human-yes guard, roles, allowlists, and untrusted text that is never spoken.
-  Guardrails only keep injected instructions in commit messages, alert annotations and notes away
-  from the model. A block is spoken as a short safe line and recorded in the trace and audit log.
+- **What runs live today:** Amazon Bedrock Guardrails, Amazon Polly and Amazon CloudWatch.
+  **Bedrock Converse with Amazon Nova Lite is implemented and unit-tested** (against a fake
+  Converse client). It becomes the model by config (`ALEXA_MODEL_PROVIDER=bedrock`) once the
+  project's Bedrock quota is raised. Every on-demand Bedrock quota on this free-plan project is 0
+  and not adjustable ([FL-31](docs/friction-log.md#fl-31-every-bedrock-on-demand-quota-is-0-and-not-adjustable-on-a-free-plan-project)).
+  Until then the model is **Groq** (`openai/gpt-oss-120b`), chosen by config. There is no silent
+  fallback between providers: the trace panel and header always name the real model,
+  guardrail and voice.
+- **Region:** everything AWS is in ap-southeast-2. No cross-Region inference profiles (`apac.*`,
+  `global.*`): the project can't use them, and their quotas are 0 here too.
+- **No AWS keys:** the SDK default chain loads the role. At startup, alexa-sim resolves
+  credentials once and exits if that fails. The Groq key is a server-side env var, never logged
+  or sent to the browser.
+- **Guardrails are the second layer, whatever the model.** One `ApplyGuardrail` call checks the
+  person's words before any model call. Another checks the untrusted text in each tool result
+  (commit messages, alert annotations, notes) before the model sees it. A block is spoken as a
+  short safe line and recorded in the trace and audit log, and a failed check fails closed.
+  Nightshift's server-side rules stay primary: two-phase confirmation, the human-yes guard, roles,
+  allowlists, and untrusted text that is never spoken.
 - **Least privilege** ([infra/aws/iam/app-access-policy.json](infra/aws/iam/app-access-policy.json)):
 
 | Action                                       | Resource / condition                                                     |
@@ -537,20 +550,14 @@ and are refused when `NODE_ENV=production`.
 | `polly:SynthesizeSpeech`                     | `aws:RequestedRegion = ap-southeast-2`                                   |
 | `cloudwatch:PutMetricData`                   | `cloudwatch:namespace = Nightshift`, Region as above                     |
 
-- **Cost per conversation (estimate):** about $0.02.
-  - Bedrock: 10 Converse calls × ~2.5K input tokens ≈ $0.0016, plus output ≈ $0.0003.
+- **Cost per conversation (estimate; measured numbers are below once the live run is done):**
   - Polly: ~800 characters ≈ $0.013.
-  - Guardrails: ≈ $0.002.
+  - Guardrails: one check per turn plus one per tool result with outside text, about 1 text
+    unit each ≈ $0.002.
   - CloudWatch: within the free tier.
-  - The daily caps bound the worst case at about $1.30 a day: 100 model calls plus 40,000 Polly
-    characters.
-- **Status:**
-  - **Verified live:** Guardrails (an injected commit message → `GUARDRAIL_INTERVENED`), Polly
-    (Kajal neural), CloudWatch (and the namespace deny), and credentials through
-    `nightshift-app`.
-  - **Not yet verified live:** Bedrock inference. The free-plan project has an on-demand quota
-    of 0 (FL-31) and a quota request is open. Until then the model path is covered by unit tests
-    against a fake Converse client.
+  - Model: Groq's free tier costs $0. With Nova Lite, about 10 calls × ~2.5K input tokens ≈
+    $0.002.
+  - The daily caps bound the worst case at about $1.30 a day.
 - **Setup and EC2:** [infra/aws/README.md](infra/aws/README.md) has the IAM, budget and
   guardrail commands, the EC2 launch printer, start/stop, and what still bills when stopped.
 

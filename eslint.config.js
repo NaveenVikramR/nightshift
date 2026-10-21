@@ -69,7 +69,12 @@ export default tseslint.config(
     // Playwright e2e: Node script whose page.evaluate callbacks run in the browser.
     files: ['apps/alexa-sim/test/e2e/**'],
     languageOptions: {
-      globals: { setTimeout: 'readonly', window: 'readonly', document: 'readonly' },
+      globals: {
+        setTimeout: 'readonly',
+        URL: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+      },
     },
   },
   {

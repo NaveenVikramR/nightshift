@@ -286,12 +286,33 @@ EC2 the same role as an instance profile. There are no access keys anywhere. The
   - Least privilege is easy: one foundation-model ARN.
 - **What needs work:**
   - Account verification blocks inference with no warning in the model-access status (FL-30).
-  - On a free-plan project every on-demand quota is 0 and "not adjustable", and the error says
-    "Too many tokens per day" (FL-31). This blocked our live run.
+  - On a free-plan project every on-demand quota is 0 and "not adjustable", including the
+    cross-Region profile, and the error says "Too many tokens per day" (FL-31). This blocked our
+    live run on Nova Lite. We run Groq by config until the quota is raised.
+  - **Feature request:** give new and free-plan accounts a small default Bedrock quota (for
+    example a few requests per minute on one small model in the project's Region), or return a
+    clear "upgrade or request access to unlock" message. Non-adjustable zeros block first-time
+    builders, and they can't tell whether to wait, upgrade or open a case. Showing the reason in
+    Service Quotas ("0 because: account verification / free plan / abuse review") would also
+    help.
 - **Onboarding:** the code took about an hour with fakes. Getting a first real token out of the
   model was blocked by quotas, not by the API.
+- **Status:** implemented and unit-tested. It becomes the live model by config once the quota is
+  raised. The same agent loop, guardrails, caps and trace work with either provider.
 - **Would I build with it again?** Yes. Converse plus tool use is the right shape for an MCP
   client. I'd check quotas on day one.
+
+### Groq (fallback model provider, not AWS)
+
+- **What I used it for:** the simulator's model while the Bedrock quota is 0. It uses
+  OpenAI-compatible chat completions with tool calling (`openai/gpt-oss-120b`, a production model
+  with tool use), chosen by `ALEXA_MODEL_PROVIDER=groq`.
+- **What worked well:** the tool-calling format maps one-to-one onto our Converse-shaped history,
+  so the adapter is about 150 lines with no SDK. `retry-after` on 429 makes rate limits easy to
+  speak.
+- **What needs work:** the free tier allows about 8K tokens per minute for gpt-oss, so a voice
+  demo has to pace its turns. gpt-oss models don't support parallel tool calls (fine for us).
+- **Would I build with it again?** Yes, as a fallback. AWS stays the target.
 
 ### Amazon Bedrock Guardrails (prompt-attack filter)
 
@@ -300,8 +321,9 @@ EC2 the same role as an instance profile. There are no access keys anywhere. The
   text that is never spoken.
   - Guardrail `nightshift-prompt-attack`: a `PROMPT_ATTACK` filter on input (HIGH), published as
     version 1.
-  - The person's latest words are checked through Converse `guardrailConfig` and `guardContent`,
-    on the first call of a turn only.
+  - The person's words are checked with `ApplyGuardrail` before any model call, so the same
+    check runs with Bedrock or Groq. We first used Converse `guardrailConfig` and
+    `guardContent`, then moved to ApplyGuardrail to be provider-independent.
   - Outside text in tool results (commit messages, alert annotations, notes, advisories) is
     checked before the model sees it. Nightshift marks it `{ untrusted: true, text }`, and one
     `ApplyGuardrail` call (source `INPUT`) checks all of it.

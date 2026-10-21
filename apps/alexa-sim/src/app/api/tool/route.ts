@@ -56,5 +56,11 @@ export async function POST(req: NextRequest) {
     PollyCharacters: characters,
   });
   log.info('card tool', { tool: name, pollyCharacters: characters });
-  return json({ result: out.result, trace: out.trace, speak: spoken, audio });
+  return json({
+    result: out.result,
+    trace: out.trace,
+    speak: spoken,
+    audio,
+    usage: { pollyCharacters: characters },
+  });
 }

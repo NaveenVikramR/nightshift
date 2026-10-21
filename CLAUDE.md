@@ -165,13 +165,13 @@ chromium`) renders every card through a real ext-apps `AppBridge` test host (`te
   `npm run screenshots`).
 - Simulated Alexa+ (`apps/alexa-sim`, Next 16, `basePath: '/alexa'`): a real MCP client
   (`src/server/mcp.ts`, one session per browser session; token only in server memory). Agent loop
-  `src/server/agent/loop.ts` (Converse-shaped; `ModelClient` = `BedrockModel` | local `ScriptedModel`),
+  `src/server/agent/loop.ts` (Converse-shaped; `ModelClient` = `BedrockModel` | `GroqModel` | test `ScriptedModel`, picked by required `ALEXA_MODEL_PROVIDER`, no fallback),
   system prompt `agent/system.ts` mirrors the Agent Skill (test enforces), **human-yes guard**
   (`agent/guard.ts`: model confirm only for a confirmation prepared here in an EARLIER turn + explicit
   yes now; card Confirm = yes), grounded speech (`agent/ground.ts`), limits (`limits.ts`: 6 tools/turn,
   40 turns, 20 req/10 min/token, daily caps 100 model / 300 Polly / 40k chars, timeouts). Card tool
   calls (`runCardTool`) are recorded in the conversation and spoken (`speak.ts`). Speech: `tts.ts`
-  (Polly | browser). AWS (ap-southeast-2, `infra/aws/`): Nova Lite on-demand, `agent/tools.ts` trims
+  (Polly | browser). AWS (ap-southeast-2, `infra/aws/`): Nova Lite on-demand (quota 0 for now, FL-31), Guardrails via ApplyGuardrail on user words + tool text for any provider, `agent/tools.ts` trims
   tools per turn, `agent/guardrail.ts` ApplyGuardrail over `{untrusted,text}` in tool results (fail
   closed), `metrics.ts` CloudWatch (namespace Nightshift, 5 counts). `config.ts` refuses
   scripted/browser unless `ALLOW_SCRIPTED_MODEL=true` and never in production; `instrumentation.ts`
