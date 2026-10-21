@@ -1,19 +1,29 @@
 /**
- * Second layer for untrusted text (commit messages, alert annotations, notes,
- * advisories): Nightshift marks it `{ untrusted: true, text }` and never speaks
- * it; before a tool result reaches the model, one ApplyGuardrail call
- * (prompt-attack filter) checks all of it. Blocked or unchecked text is withheld.
+ * Second layer against prompt injection, independent of the model provider
+ * (Bedrock or Groq): one ApplyGuardrail call (prompt-attack filter) on the
+ * person's words before the model sees them, and one on the untrusted text of
+ * each tool result (commit messages, alert annotations, notes, advisories:
+ * Nightshift marks it `{ untrusted: true, text }` and never speaks it).
+ * Blocked or unchecked text is withheld (fail closed).
  * Nightshift's server-side rules (two-phase actions, roles, allowlists) remain
  * the primary protection; this only keeps injected instructions away from the model.
  */
 import { ApplyGuardrailCommand, BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import type { ApplyGuardrailCommandOutput } from '@aws-sdk/client-bedrock-runtime';
-import type { GuardrailRef } from './bedrock';
+
+export interface GuardrailRef {
+  id: string;
+  version: string;
+}
 
 export const WITHHELD_FLAGGED = '[withheld: flagged by guardrail]';
 export const WITHHELD_UNCHECKED = '[withheld: guardrail unavailable]';
 export const GUARDRAIL_SPOKEN =
   'Some text in that result looked like an instruction, so I left it out.';
+/** Spoken when the person's own words trip the filter. */
+export const GUARDRAIL_INPUT_SPOKEN = 'That looked like an instruction to me, so I left it out.';
+export const GUARDRAIL_UNCHECKED_SPOKEN =
+  "I couldn't check that safely just now. Try again in a minute.";
 
 export interface TextGuard {
   readonly label: string;
@@ -36,7 +46,7 @@ export class BedrockTextGuard implements TextGuard {
     private readonly ref: GuardrailRef,
     private readonly client: ApplyGuardrailSender,
   ) {
-    this.label = `Bedrock Guardrails · ${ref.id} v${ref.version}`;
+    this.label = `Amazon Bedrock Guardrails (${ref.id} v${ref.version})`;
   }
 
   static fromRegion(ref: GuardrailRef, region: string): BedrockTextGuard {

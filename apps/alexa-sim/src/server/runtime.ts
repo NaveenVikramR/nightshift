@@ -5,11 +5,12 @@
  */
 import 'server-only';
 import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
-import { BedrockModel, type GuardrailRef } from './agent/bedrock';
-import { BedrockTextGuard } from './agent/guardrail';
+import { BedrockModel } from './agent/bedrock';
+import { GroqModel } from './agent/groq';
+import { BedrockTextGuard, type GuardrailRef } from './agent/guardrail';
 import type { AgentDeps } from './agent/loop';
 import { ScriptedModel } from './agent/scripted';
-import { config, type AlexaConfig } from './config';
+import { config, usesAws, type AlexaConfig } from './config';
 import { DailyCap, RateLimiter, Usage } from './limits';
 import { log } from './log';
 import { CloudWatchMetrics, NoMetrics, type Metrics } from './metrics';
@@ -25,14 +26,15 @@ export interface Runtime {
   speechCap: DailyCap;
   speechCharCap: DailyCap;
   metrics: Metrics;
-  /** e.g. "Bedrock Guardrails · abc123 v1", or null when not configured. */
+  /** e.g. "Amazon Bedrock Guardrails (abc123 v1)", or null when not configured. */
   guardrailLabel: string | null;
   loginLimiter: RateLimiter;
   demoLimiter: RateLimiter;
 }
 
 function build(): Runtime {
-  // loadConfig() has already refused scripted/browser outside tests and a missing model or region.
+  // loadConfig() has already refused scripted/browser outside tests and missing model settings.
+  // The provider is exactly the configured one: there is no fallback between providers.
   const cfg = config();
   const usage = new Usage();
   const speechCap = new DailyCap(cfg.DAILY_SPEECH_REQUEST_CAP);
@@ -44,9 +46,11 @@ function build(): Runtime {
       : undefined;
   const guard = guardrail ? BedrockTextGuard.fromRegion(guardrail, region) : undefined;
   const model =
-    cfg.MODEL_PROVIDER === 'bedrock'
-      ? BedrockModel.fromRegion(cfg.BEDROCK_MODEL_ID!, region, guardrail)
-      : new ScriptedModel();
+    cfg.ALEXA_MODEL_PROVIDER === 'bedrock'
+      ? BedrockModel.fromRegion(cfg.BEDROCK_MODEL_ID!, region)
+      : cfg.ALEXA_MODEL_PROVIDER === 'groq'
+        ? new GroqModel(cfg.GROQ_MODEL, cfg.GROQ_API_KEY!)
+        : new ScriptedModel();
   return {
     cfg,
     sessions: new SessionStore(cfg.SESSION_IDLE_MINUTES * 60_000),
@@ -92,7 +96,7 @@ export function runtime(): Runtime {
 export async function checkStartup(): Promise<void> {
   const rt = runtime();
   const { cfg } = rt;
-  if (cfg.MODEL_PROVIDER === 'bedrock' || cfg.TTS_PROVIDER === 'polly') {
+  if (usesAws(cfg)) {
     const creds = await new BedrockRuntimeClient({ region: cfg.AWS_REGION! }).config.credentials();
     if (!creds.accessKeyId) throw new Error('AWS credentials resolved empty');
   }
@@ -101,6 +105,6 @@ export async function checkStartup(): Promise<void> {
     speech: rt.speech.label,
     guardrail: rt.guardrailLabel ?? 'none',
     metrics: cfg.CLOUDWATCH_METRICS,
-    credentials: cfg.MODEL_PROVIDER === 'bedrock' || cfg.TTS_PROVIDER === 'polly' ? 'ok' : 'unused',
+    credentials: usesAws(cfg) ? 'ok' : 'unused',
   });
 }

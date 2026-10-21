@@ -345,13 +345,18 @@ function Device({ session, onSignedOut }: { session: SessionInfo; onSignedOut: (
             ))}
           </select>
           <span className="muted small">
-            {session.model} · {session.speech}
-            {session.guardrail ? ` · ${session.guardrail}` : ''}
+            Model: {session.model} · Guardrails: {session.guardrail ?? 'none'} · Voice:{' '}
+            {session.speech}
           </span>
         </div>
       </section>
 
-      <TracePanel trace={trace} model={session.model} guardrail={session.guardrail} />
+      <TracePanel
+        trace={trace}
+        model={session.model}
+        guardrail={session.guardrail}
+        speech={session.speech}
+      />
       {session.demo ? (
         <DemoPanel onEntry={(e) => setTrace((t) => [...t, e])} onError={handleError} />
       ) : null}

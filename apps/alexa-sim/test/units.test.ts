@@ -224,10 +224,14 @@ describe('request security', () => {
     expect(checkCsrf('abc', 'abd').ok).toBe(false);
     expect(checkCsrf('abc', null).ok).toBe(false);
   });
-  it('config defaults: Bedrock + Polly, the documented cost limits', () => {
-    const env = { BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0', AWS_REGION: 'ap-southeast-2' };
+  it('config: the provider is required; Polly and the documented cost limits by default', () => {
+    const env = {
+      ALEXA_MODEL_PROVIDER: 'bedrock',
+      BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0',
+      AWS_REGION: 'ap-southeast-2',
+    };
     expect(loadConfig(env as unknown as NodeJS.ProcessEnv)).toMatchObject({
-      MODEL_PROVIDER: 'bedrock',
+      ALEXA_MODEL_PROVIDER: 'bedrock',
       TTS_PROVIDER: 'polly',
       CLOUDWATCH_METRICS: false,
       MAX_TOOL_CALLS_PER_TURN: 6,
@@ -237,22 +241,62 @@ describe('request security', () => {
       DAILY_SPEECH_REQUEST_CAP: 300,
       DAILY_SPEECH_CHAR_CAP: 40_000,
     });
+    expect(() =>
+      loadConfig({ AWS_REGION: 'ap-southeast-2' } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/ALEXA_MODEL_PROVIDER must be bedrock, groq or scripted/);
   });
 
-  it('no silent fallback: Bedrock needs a model and region; scripted/browser only when asked, never in production', () => {
+  it('no silent fallback: each provider needs its own settings; scripted/browser only when asked, never in production', () => {
     const load = (env: Record<string, string>) => () =>
       loadConfig(env as unknown as NodeJS.ProcessEnv);
-    expect(load({})).toThrow(/AWS_REGION is required.*BEDROCK_MODEL_ID is required/);
-    const local = { MODEL_PROVIDER: 'scripted', TTS_PROVIDER: 'browser' };
+    expect(load({ ALEXA_MODEL_PROVIDER: 'bedrock' })).toThrow(
+      /AWS_REGION is required.*BEDROCK_MODEL_ID is required/,
+    );
+    const local = { ALEXA_MODEL_PROVIDER: 'scripted', TTS_PROVIDER: 'browser' };
     expect(load(local)).toThrow(/needs ALLOW_SCRIPTED_MODEL=true/);
     expect(load({ ...local, ALLOW_SCRIPTED_MODEL: 'true' })).not.toThrow();
     expect(load({ ...local, ALLOW_SCRIPTED_MODEL: 'true', NODE_ENV: 'production' })).toThrow(
       /scripted is not allowed in production.*browser is not allowed in production/,
     );
-    const aws = { BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0', AWS_REGION: 'ap-southeast-2' };
+    const aws = {
+      ALEXA_MODEL_PROVIDER: 'bedrock',
+      BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0',
+      AWS_REGION: 'ap-southeast-2',
+    };
     expect(load({ ...aws, NODE_ENV: 'production' })).not.toThrow();
     expect(load({ ...aws, BEDROCK_GUARDRAIL_ID: 'abc123' })).toThrow(/both BEDROCK_GUARDRAIL_ID/);
     expect(load({ ...aws, AWS_REGION: 'us-east-1; rm' })).toThrow();
+    // Groq: needs its key; Guardrails, Polly and CloudWatch still need the AWS Region.
+    const groq = { ALEXA_MODEL_PROVIDER: 'groq', AWS_REGION: 'ap-southeast-2' };
+    expect(load(groq)).toThrow(/GROQ_API_KEY is required/);
+    const key = 'gsk_' + 'x'.repeat(40);
+    expect(
+      loadConfig({ ...groq, GROQ_API_KEY: key, NODE_ENV: 'production' } as never),
+    ).toMatchObject({
+      ALEXA_MODEL_PROVIDER: 'groq',
+      GROQ_MODEL: 'openai/gpt-oss-120b',
+    });
+    expect(load({ ALEXA_MODEL_PROVIDER: 'groq', GROQ_API_KEY: key })).toThrow(
+      /AWS_REGION is required/,
+    );
+    expect(
+      load({
+        ...groq,
+        GROQ_API_KEY: key,
+        BEDROCK_GUARDRAIL_ID: 'g1',
+        BEDROCK_GUARDRAIL_VERSION: '1',
+      }),
+    ).not.toThrow();
+  });
+
+  it('a bad key never appears in the config error', () => {
+    try {
+      loadConfig({ ALEXA_MODEL_PROVIDER: 'groq', GROQ_API_KEY: 'secret value!' } as never);
+      expect.unreachable();
+    } catch (err) {
+      expect(String(err)).not.toContain('secret value!');
+      expect(JSON.stringify(err)).not.toContain('secret value!');
+    }
   });
 });
 

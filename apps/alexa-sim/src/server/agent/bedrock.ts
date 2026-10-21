@@ -9,7 +9,14 @@ import {
   type ConverseCommandInput,
   type ConverseCommandOutput,
 } from '@aws-sdk/client-bedrock-runtime';
-import type { ContentBlock, Message, ModelClient, ModelRequest, ModelResponse } from './types';
+import {
+  ModelRateLimitError,
+  type ContentBlock,
+  type Message,
+  type ModelClient,
+  type ModelRequest,
+  type ModelResponse,
+} from './types';
 
 /** The one SDK method we use (a fake implements it in tests). */
 export interface ConverseSender {
@@ -19,51 +26,17 @@ export interface ConverseSender {
   ): Promise<ConverseCommandOutput>;
 }
 
-export interface GuardrailRef {
-  id: string;
-  version: string;
-}
-
 /** MCP JSON Schema -> Bedrock tool schema (drops keys Bedrock doesn't need). */
 function toolSchema(schema: Record<string, unknown>): Record<string, unknown> {
   const { $schema: _drop, ...rest } = schema;
   return { type: 'object', ...rest };
 }
 
-/** The latest plain user utterance becomes guardContent, so the guardrail checks only it. */
-function guardLatestUtterance(messages: Message[]): unknown[] {
-  let idx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]!;
-    if (m.role === 'user' && m.content.every((b) => 'text' in b)) {
-      idx = i;
-      break;
-    }
-  }
-  return messages.map((m, i) =>
-    i !== idx
-      ? m
-      : {
-          role: m.role,
-          content: m.content.map((b) => ({
-            guardContent: { text: { text: (b as { text: string }).text } },
-          })),
-        },
-  );
-}
-
-export function buildConverseInput(
-  modelId: string,
-  req: ModelRequest,
-  guardrail?: GuardrailRef,
-): ConverseCommandInput {
-  const guard = Boolean(guardrail && req.guardUtterance);
+export function buildConverseInput(modelId: string, req: ModelRequest): ConverseCommandInput {
   return {
     modelId,
     system: [{ text: req.system }],
-    messages: (guard
-      ? guardLatestUtterance(req.messages)
-      : req.messages) as ConverseCommandInput['messages'],
+    messages: req.messages as ConverseCommandInput['messages'],
     toolConfig: {
       tools: req.tools.map((t) => ({
         toolSpec: {
@@ -76,18 +49,10 @@ export function buildConverseInput(
     },
     // Short, deterministic answers for a voice device.
     inferenceConfig: { maxTokens: 300, temperature: 0 },
-    ...(guardrail && {
-      guardrailConfig: {
-        guardrailIdentifier: guardrail.id,
-        guardrailVersion: guardrail.version,
-        trace: 'enabled',
-      },
-    }),
   };
 }
 
 function toStopReason(r: string | undefined): ModelResponse['stopReason'] {
-  if (r === 'guardrail_intervened') return 'guardrail';
   return r === 'end_turn' || r === 'tool_use' || r === 'max_tokens' ? r : 'other';
 }
 
@@ -97,20 +62,27 @@ export class BedrockModel implements ModelClient {
   constructor(
     private readonly modelId: string,
     private readonly client: ConverseSender,
-    private readonly guardrail?: GuardrailRef,
   ) {
     this.label = `Amazon Bedrock · ${modelId}`;
   }
 
-  static fromRegion(modelId: string, region: string, guardrail?: GuardrailRef): BedrockModel {
-    return new BedrockModel(modelId, new BedrockRuntimeClient({ region }), guardrail);
+  static fromRegion(modelId: string, region: string): BedrockModel {
+    return new BedrockModel(modelId, new BedrockRuntimeClient({ region }));
   }
 
   async converse(req: ModelRequest): Promise<ModelResponse> {
-    const out = await this.client.send(
-      new ConverseCommand(buildConverseInput(this.modelId, req, this.guardrail)),
-      req.signal ? { abortSignal: req.signal } : undefined,
-    );
+    let out: ConverseCommandOutput;
+    try {
+      out = await this.client.send(
+        new ConverseCommand(buildConverseInput(this.modelId, req)),
+        req.signal ? { abortSignal: req.signal } : undefined,
+      );
+    } catch (err) {
+      // Includes a quota of 0 ("Too many tokens per day", FL-31).
+      if (err instanceof Error && err.name === 'ThrottlingException')
+        throw new ModelRateLimitError();
+      throw err;
+    }
     const msg = out.output && 'message' in out.output ? out.output.message : undefined;
     const content = ((msg?.content ?? []) as ContentBlock[]).filter(
       (b) => 'text' in b || 'toolUse' in b,

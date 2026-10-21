@@ -26,11 +26,6 @@ export interface ModelRequest {
   system: string;
   messages: Message[];
   tools: ToolSpec[];
-  /**
-   * Run the guardrail on the latest plain user utterance (first model call of a
-   * turn only, so earlier history and tool results aren't billed again).
-   */
-  guardUtterance?: boolean;
   signal?: AbortSignal;
 }
 
@@ -41,12 +36,27 @@ export interface TokenUsage {
 
 export interface ModelResponse {
   message: Message;
-  /** 'guardrail' = the guardrail blocked the user's words; message holds its safe text. */
-  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'guardrail' | 'other';
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'other';
   usage?: TokenUsage;
 }
 
-/** A chat model with tool use (Bedrock Converse, or the local scripted model). */
+/** The provider said "too many requests / tokens" (Groq 429, Bedrock ThrottlingException). */
+export class ModelRateLimitError extends Error {
+  constructor(readonly retryAfterSeconds?: number) {
+    super('model rate limited');
+    this.name = 'ModelRateLimitError';
+  }
+}
+
+/** Any other provider failure. Carries the HTTP status only, never the response body. */
+export class ModelError extends Error {
+  constructor(readonly status: number) {
+    super(`model error ${status}`);
+    this.name = 'ModelError';
+  }
+}
+
+/** A chat model with tool use (Bedrock Converse, Groq, or the scripted test model). */
 export interface ModelClient {
   /** Shown in the "What Nightshift did" panel. */
   readonly label: string;

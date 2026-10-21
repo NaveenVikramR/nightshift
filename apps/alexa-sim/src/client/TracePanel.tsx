@@ -20,10 +20,12 @@ export function TracePanel({
   trace,
   model,
   guardrail,
+  speech,
 }: {
   trace: TraceEntry[];
   model: string;
   guardrail: string | null;
+  speech: string;
 }) {
   const turns = new Map<number, TraceEntry[]>();
   for (const e of trace) turns.set(e.turn, [...(turns.get(e.turn) ?? []), e]);
@@ -36,10 +38,13 @@ export function TracePanel({
         </span>
       </summary>
       <p className="muted small">
-        Model: {model}. Every tool call below went through the Nightshift MCP server.{' '}
+        <span className="trace-providers">
+          Model: {model} · Guardrails: {guardrail ?? 'none'} · Voice: {speech}
+        </span>{' '}
+        Every tool call below went through the Nightshift MCP server.{' '}
         {guardrail
-          ? `Outside text in tool results is checked by ${guardrail} before the model sees it.`
-          : 'No guardrail configured.'}{' '}
+          ? 'Your words and outside text in tool results are checked by the guardrail before the model sees them.'
+          : ''}{' '}
         Inputs are shown with secrets masked; token counts only, never content.
       </p>
       {trace.length === 0 ? <p className="muted">Nothing yet.</p> : null}

@@ -500,7 +500,7 @@ ALEXA_TOKEN_FILE=<file with a responder token> npm run e2e -w @nightshift/alexa-
 
 The server refuses to start without the Bedrock model, Region or AWS credentials. It never falls
 back silently. The scripted model and browser voice exist for tests and the no-AWS e2e only
-(`MODEL_PROVIDER=scripted TTS_PROVIDER=browser ALLOW_SCRIPTED_MODEL=true`, `next dev` only),
+(`ALEXA_MODEL_PROVIDER=scripted TTS_PROVIDER=browser ALLOW_SCRIPTED_MODEL=true`, `next dev` only),
 and are refused when `NODE_ENV=production`.
 
 ## AWS architecture

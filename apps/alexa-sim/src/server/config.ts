@@ -19,12 +19,25 @@ const EnvSchema = z.object({
   ALLOWED_HOSTS: csv,
   SECURE_COOKIES: opt(z.enum(['true', 'false'])).transform((v) => v === 'true'),
 
-  /** Bedrock + Polly by default. "scripted"/"browser" are for tests and local e2e only. */
-  MODEL_PROVIDER: opt(z.enum(['scripted', 'bedrock'])).transform((v) => v ?? 'bedrock'),
+  /**
+   * The model, chosen by config only (required; never a fallback): "bedrock" (Converse,
+   * e.g. Nova Lite) or "groq" (OpenAI-compatible tool calling). "scripted" = tests only.
+   */
+  ALEXA_MODEL_PROVIDER: z.enum(['bedrock', 'groq', 'scripted'], {
+    error: 'ALEXA_MODEL_PROVIDER must be bedrock, groq or scripted',
+  }),
+  /** Server-side only; never logged or sent to the browser. */
+  GROQ_API_KEY: opt(z.string().regex(/^[\w-]{20,200}$/)),
+  GROQ_MODEL: opt(z.string().regex(/^[\w./:-]{3,100}$/)).transform(
+    (v) => v ?? 'openai/gpt-oss-120b',
+  ),
   ALLOW_SCRIPTED_MODEL: opt(z.enum(['true', 'false'])).transform((v) => v === 'true'),
   BEDROCK_MODEL_ID: opt(z.string().regex(/^[\w.:-]{3,200}$/)),
   AWS_REGION: opt(z.string().regex(/^[a-z]{2}(-[a-z]+)+-\d$/)),
-  /** Bedrock guardrail (prompt-attack filter): id + published version. Optional second layer. */
+  /**
+   * Bedrock guardrail (prompt-attack filter, via ApplyGuardrail): id + published version.
+   * Checks the person's words and untrusted tool-result text with any model provider.
+   */
   BEDROCK_GUARDRAIL_ID: opt(z.string().regex(/^[a-z0-9]{1,64}$/)),
   BEDROCK_GUARDRAIL_VERSION: opt(z.string().regex(/^\d{1,8}$/)),
   TTS_PROVIDER: opt(z.enum(['browser', 'polly'])).transform((v) => v ?? 'polly'),
@@ -63,6 +76,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AlexaConfig {
   return cfg;
 }
 
+/** Anything that needs AWS credentials. */
+export const usesAws = (cfg: AlexaConfig): boolean =>
+  cfg.ALEXA_MODEL_PROVIDER === 'bedrock' ||
+  cfg.TTS_PROVIDER === 'polly' ||
+  Boolean(cfg.BEDROCK_GUARDRAIL_ID) ||
+  cfg.CLOUDWATCH_METRICS;
+
 export class ConfigError extends Error {
   constructor(readonly problems: string[]) {
     super(`alexa-sim config: ${problems.join('; ')}`);
@@ -77,11 +97,11 @@ export class ConfigError extends Error {
 export function providerProblems(cfg: AlexaConfig, nodeEnv: string | undefined): string[] {
   const prod = nodeEnv === 'production';
   const problems: string[] = [];
-  if (cfg.MODEL_PROVIDER === 'scripted' && (prod || !cfg.ALLOW_SCRIPTED_MODEL))
+  if (cfg.ALEXA_MODEL_PROVIDER === 'scripted' && (prod || !cfg.ALLOW_SCRIPTED_MODEL))
     problems.push(
       prod
-        ? 'MODEL_PROVIDER=scripted is not allowed in production; use bedrock'
-        : 'MODEL_PROVIDER=scripted needs ALLOW_SCRIPTED_MODEL=true (tests and local e2e only)',
+        ? 'ALEXA_MODEL_PROVIDER=scripted is not allowed in production; use bedrock or groq'
+        : 'ALEXA_MODEL_PROVIDER=scripted needs ALLOW_SCRIPTED_MODEL=true (tests and local e2e only)',
     );
   if (cfg.TTS_PROVIDER === 'browser' && (prod || !cfg.ALLOW_SCRIPTED_MODEL))
     problems.push(
@@ -89,14 +109,14 @@ export function providerProblems(cfg: AlexaConfig, nodeEnv: string | undefined):
         ? 'TTS_PROVIDER=browser is not allowed in production; use polly'
         : 'TTS_PROVIDER=browser needs ALLOW_SCRIPTED_MODEL=true (tests and local e2e only)',
     );
-  const aws = cfg.MODEL_PROVIDER === 'bedrock' || cfg.TTS_PROVIDER === 'polly';
-  if (aws && !cfg.AWS_REGION) problems.push('AWS_REGION is required for Bedrock and Polly');
-  if (cfg.MODEL_PROVIDER === 'bedrock' && !cfg.BEDROCK_MODEL_ID)
+  if (usesAws(cfg) && !cfg.AWS_REGION)
+    problems.push('AWS_REGION is required for Bedrock, Guardrails, Polly and CloudWatch');
+  if (cfg.ALEXA_MODEL_PROVIDER === 'bedrock' && !cfg.BEDROCK_MODEL_ID)
     problems.push('BEDROCK_MODEL_ID is required (e.g. amazon.nova-lite-v1:0)');
+  if (cfg.ALEXA_MODEL_PROVIDER === 'groq' && !cfg.GROQ_API_KEY)
+    problems.push('GROQ_API_KEY is required for ALEXA_MODEL_PROVIDER=groq');
   if (Boolean(cfg.BEDROCK_GUARDRAIL_ID) !== Boolean(cfg.BEDROCK_GUARDRAIL_VERSION))
     problems.push('set both BEDROCK_GUARDRAIL_ID and BEDROCK_GUARDRAIL_VERSION, or neither');
-  if (cfg.BEDROCK_GUARDRAIL_ID && cfg.MODEL_PROVIDER !== 'bedrock')
-    problems.push('the guardrail needs MODEL_PROVIDER=bedrock');
   return problems;
 }
 

@@ -80,6 +80,7 @@ export class Usage {
     outputTokens: 0,
     guardrailBlocks: 0,
     modelErrors: 0,
+    modelRateLimited: 0,
     refusedConfirms: 0,
     rateLimited: 0,
     dailyCapHit: 0,

@@ -13,7 +13,9 @@ import { log } from '../log';
 import type { Session, TraceEntry } from '../sessions';
 import { checkAgentConfirm } from './guard';
 import {
+  GUARDRAIL_INPUT_SPOKEN,
   GUARDRAIL_SPOKEN,
+  GUARDRAIL_UNCHECKED_SPOKEN,
   untrustedTexts,
   withholdUntrusted,
   WITHHELD_FLAGGED,
@@ -29,13 +31,17 @@ import {
   isToolUse,
   type ContentBlock,
   type Message,
+  ModelRateLimitError,
   type ModelClient,
   type ModelResponse,
 } from './types';
 
 export interface AgentDeps {
   model: ModelClient;
-  /** Bedrock Guardrails over untrusted tool-result text (optional second layer). */
+  /**
+   * Bedrock Guardrails (ApplyGuardrail): the person's words and untrusted tool-result
+   * text, whatever the model provider. Optional second layer.
+   */
   guard?: TextGuard;
   rate: RateLimiter;
   modelCap: DailyCap;
@@ -278,7 +284,47 @@ export async function runTurn(
     return { reply, replySource, cards, trace, modelLabel, stats };
   };
 
+  /** ApplyGuardrail on the person's words before any model sees them (fail closed). */
+  const guardUtterance = async (): Promise<TurnResult | undefined> => {
+    if (!deps.guard) return undefined;
+    let verdict: 'allowed' | 'blocked' | 'unchecked';
+    try {
+      verdict = await withTimeout(deps.mcpTimeoutMs, 'guardrail', (signal) =>
+        deps.guard!.check([utterance.slice(0, 500)], signal),
+      );
+    } catch (err) {
+      log.warn('guardrail check failed', { error: err instanceof Error ? err.name : 'unknown' });
+      verdict = 'unchecked';
+    }
+    if (verdict === 'allowed') return undefined;
+    const blocked = verdict === 'blocked';
+    if (blocked) {
+      stats.guardrailBlocks++;
+      deps.usage.add('guardrailBlocks');
+      auditGuardrailBlock(session, 'utterance', 'user_input');
+    }
+    // Keep the words out of the history either way.
+    const last = session.history[session.history.length - 1];
+    if (last?.role === 'user') last.content = [{ text: '(withheld by the guardrail)' }];
+    trace.push({
+      turn: session.turn,
+      at: nowIso(),
+      source: 'agent',
+      tool: 'guardrail',
+      input: { checked: 'your words' },
+      outcome: blocked ? 'refused' : 'error',
+      note: blocked
+        ? 'Blocked by the prompt-attack filter before the model saw it.'
+        : "Couldn't check your words, so they were not sent to the model.",
+    });
+    const reply = blocked ? GUARDRAIL_INPUT_SPOKEN : GUARDRAIL_UNCHECKED_SPOKEN;
+    closeTurn(session.history, reply);
+    return result(reply, 'guard');
+  };
+
   const work = async (): Promise<TurnResult> => {
+    const refused = await guardUtterance();
+    if (refused) return refused;
     const all: McpTool[] = await session.mcp.listTools();
     const byName = new Map(all.map((t) => [t.name, t]));
     // Trimmed once per turn: confirm_action only once something is prepared.
@@ -306,7 +352,6 @@ export async function runTurn(
             system,
             messages: trimHistory(session.history),
             tools: specs,
-            guardUtterance: stats.modelCalls === 0,
             signal,
           }),
         );
@@ -321,31 +366,6 @@ export async function runTurn(
       deps.usage.add('inputTokens', response.usage?.inputTokens ?? 0);
       deps.usage.add('outputTokens', response.usage?.outputTokens ?? 0);
 
-      if (response.stopReason === 'guardrail') {
-        // The person's words tripped the prompt-attack filter: keep them out of the history.
-        stats.guardrailBlocks++;
-        deps.usage.add('guardrailBlocks');
-        auditGuardrailBlock(session, 'converse', 'user_input');
-        const reply =
-          response.message.content
-            .filter(isText)
-            .map((b) => b.text)
-            .join(' ')
-            .trim() || GUARDRAIL_SPOKEN;
-        const last = session.history[session.history.length - 1];
-        if (last?.role === 'user') last.content = [{ text: '(withheld by the guardrail)' }];
-        trace.push({
-          turn: session.turn,
-          at: nowIso(),
-          source: 'agent',
-          tool: 'guardrail',
-          input: { checked: 'your words' },
-          outcome: 'refused',
-          note: 'Blocked by the prompt-attack filter before the model saw it.',
-        });
-        closeTurn(session.history, reply);
-        return result(reply, 'guard');
-      }
       session.history.push(response.message);
 
       const uses = response.message.content.filter(isToolUse);
@@ -469,12 +489,16 @@ export async function runTurn(
     return done;
   } catch (err) {
     const timeout = err instanceof TimeoutError;
+    const busy = err instanceof ModelRateLimitError;
+    if (busy) deps.usage.add('modelRateLimited');
     log.warn('turn failed', { error: err instanceof Error ? err.name : 'unknown', timeout });
     trace.push(modelEntry());
     session.trace.push(...trace);
-    const reply = timeout
-      ? 'That took too long. Try again in a minute.'
-      : "I couldn't think that through just now. Try again in a minute.";
+    const reply = busy
+      ? 'The model is busy right now. Try again in a minute.'
+      : timeout
+        ? 'That took too long. Try again in a minute.'
+        : "I couldn't think that through just now. Try again in a minute.";
     closeTurn(session.history, reply);
     return { reply, replySource: 'guard', cards, trace, modelLabel, stats };
   }

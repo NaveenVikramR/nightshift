@@ -2,7 +2,7 @@
  * Local model (no AWS): maps what the person says to Nightshift tools with
  * keyword intents and answers with the tools' own `speak` text. It drives the
  * same agent loop, guards and limits as Bedrock, so the whole app runs locally.
- * Clearly labelled in the UI; MODEL_PROVIDER=bedrock switches to the real model.
+ * Clearly labelled in the UI; ALEXA_MODEL_PROVIDER=bedrock or groq selects a real model.
  */
 import { isExplicitYes, isNo } from './guard';
 import {
