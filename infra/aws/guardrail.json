@@ -1,0 +1,11 @@
+{
+  "name": "nightshift-prompt-attack",
+  "description": "Second layer for the simulated Alexa+: prompt-attack filter on user input and on untrusted tool text (commit messages, alert annotations). Nightshift's server-side rules are the primary protection.",
+  "contentPolicyConfig": {
+    "filtersConfig": [
+      { "type": "PROMPT_ATTACK", "inputStrength": "HIGH", "outputStrength": "NONE" }
+    ]
+  },
+  "blockedInputMessaging": "That looked like an instruction to me, so I left it out.",
+  "blockedOutputsMessaging": "I can't say that. Ask me again."
+}

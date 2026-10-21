@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "OnlyTheKillSwitchOnTheAppRole",
+      "Effect": "Allow",
+      "Action": ["iam:AttachRolePolicy", "iam:DetachRolePolicy"],
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/nightshift-app",
+      "Condition": {
+        "ArnEquals": { "iam:PolicyARN": "arn:aws:iam::ACCOUNT_ID:policy/nightshift-deny-ai" }
+      }
+    }
+  ]
+}
