@@ -212,7 +212,8 @@ Guardrails ≤ $0.0015, CloudWatch within the free tier). Source: [docs/live-run
     5 minutes) and an audit row per delivery.
   - **Tested with a real bot on 2026-10-22.** Nightshift's `TelegramNotifier` got HTTP 200 /
     `ok: true`. In a real `demo:outage`, the local Alertmanager delivered both firing alerts to
-    Nightshift's webhook (audited `webhooks/alertmanager ok`), and the pushes reached the phone.
+    Nightshift's webhook (audited `webhooks/alertmanager ok`), and Nightshift sent both pushes
+    with no notifier error.
   - A live integration test (`npm run test:integration`: real Alertmanager → Nightshift → a fake
     Telegram) covers the same path without a real bot.
 - **What needs work:**

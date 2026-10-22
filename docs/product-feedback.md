@@ -134,7 +134,7 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **What worked:**
   - A single HTTPS call.
   - Tested with a real bot on 2026-10-22: `sendMessage` returned HTTP 200 / `ok: true`, and a real
-    `demo:outage` produced two audited webhook deliveries and two phone pushes.
+    `demo:outage` produced two audited webhook deliveries, each sent on with no notifier error.
 - **What needs work:**
   - The chat ID can only be found through `getUpdates` after the person messages the bot, and an
     empty list gives no hint why.
