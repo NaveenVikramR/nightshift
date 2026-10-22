@@ -1,20 +1,20 @@
 /* Nightshift simulated Alexa+: an Echo Show-like device, same visual language as the MCP Apps cards. */
 :root {
   color-scheme: dark;
-  --bg: #07090f;
-  --bezel: #10141d;
-  --surface: #141a26;
-  --surface-2: #1b2232;
-  --line: #2a3447;
-  --text: #f2f5fa;
-  --muted: #aab3c3;
+  --bg: #0a0a0a;
+  --bezel: #121212;
+  --surface: #141414;
+  --surface-2: #1c1c1c;
+  --line: #2b2b2b;
+  --text: #f5f5f5;
+  --muted: #a8a8a8;
   --focus: #8ec5ff;
   --crit: #ff6b6b;
   --warn: #ffbe55;
   --ok: #45d98a;
   --listen: #3d9bff;
   --think: #22d3ee;
-  --radius: 18px;
+  --radius: 16px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace;
 }
@@ -30,7 +30,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(1200px 600px at 50% -10%, #121a2b 0%, var(--bg) 60%);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   line-height: 1.45;
@@ -175,10 +175,9 @@ select {
   padding: 4px 12px;
   border-radius: 999px;
   border: 2px solid currentColor;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: capitalize;
 }
 .role-responder {
   color: var(--ok);
@@ -192,11 +191,8 @@ select {
   position: relative;
   padding: 18px 18px 30px;
   border-radius: 34px;
-  background: linear-gradient(180deg, #171c27, var(--bezel));
-  border: 1px solid #222a39;
-  box-shadow:
-    0 30px 80px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: var(--bezel);
+  border: 1px solid var(--line);
 }
 .screen {
   display: grid;
@@ -206,8 +202,8 @@ select {
   min-height: 420px;
   padding: 14px;
   border-radius: 20px;
-  background: #0b0f17;
-  border: 1px solid #1d2433;
+  background: var(--bg);
+  border: 1px solid var(--line);
   overflow: hidden;
 }
 /* The light ring: a bar under the screen, like an Echo Show's light bar. */
@@ -219,37 +215,29 @@ select {
   height: 6px;
   transform: translateX(-50%);
   border-radius: 999px;
-  background: #2a3242;
-  transition:
-    background 0.2s,
-    box-shadow 0.2s;
+  background: var(--line);
+  transition: background 0.2s;
 }
 .ring-label {
   position: absolute;
   right: 26px;
   bottom: 4px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 650;
   color: var(--muted);
 }
 .ring-listening .ring {
   background: var(--listen);
-  box-shadow: 0 0 22px 4px rgba(61, 155, 255, 0.65);
 }
 .ring-thinking .ring {
   background: var(--think);
-  box-shadow: 0 0 22px 4px rgba(34, 211, 238, 0.55);
   animation: pulse 1.1s ease-in-out infinite;
 }
 .ring-speaking .ring {
   background: #fff;
-  box-shadow: 0 0 22px 4px rgba(255, 255, 255, 0.55);
 }
 .ring-error .ring {
   background: var(--crit);
-  box-shadow: 0 0 22px 4px rgba(255, 107, 107, 0.55);
 }
 .ring-listening .ring-label {
   color: var(--listen);
@@ -266,7 +254,6 @@ select {
 @keyframes pulse {
   50% {
     opacity: 0.45;
-    box-shadow: 0 0 6px 1px rgba(34, 211, 238, 0.35);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -321,10 +308,8 @@ select {
 .caption-who {
   display: block;
   margin-bottom: 2px;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 700;
   color: var(--muted);
 }
 .caption-you {
@@ -385,7 +370,8 @@ select {
 }
 .mic-on {
   background: var(--listen);
-  box-shadow: 0 0 0 6px rgba(61, 155, 255, 0.25);
+  outline: 2px solid var(--listen);
+  outline-offset: 3px;
 }
 .mic-on svg {
   stroke: #06101f;
@@ -427,10 +413,8 @@ select {
   gap: 10px;
 }
 .trace-turn {
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
+  font-weight: 700;
   color: var(--muted);
 }
 .trace-entry {
@@ -465,10 +449,8 @@ select {
   color: var(--muted);
 }
 .trace-outcome {
-  font-size: 0.7rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 .outcome-ok {
   color: var(--ok);
@@ -536,4 +518,11 @@ select {
   .talk .btn {
     grid-column: 1 / -1;
   }
+}
+
+/* Numbers that update (tokens, percents, times) keep their width. */
+.trace,
+.captions,
+.usage {
+  font-variant-numeric: tabular-nums;
 }

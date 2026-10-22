@@ -27,10 +27,8 @@
 }
 .eyebrow {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 /* Severity: colour + icon + word, always together. */
@@ -41,10 +39,8 @@
   padding: 6px 14px 6px 10px;
   border-radius: 999px;
   border: 2px solid currentColor;
-  font-size: 0.9rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.95rem;
+  font-weight: 750;
   white-space: nowrap;
 }
 .badge svg,
@@ -118,10 +114,8 @@
 .quote-label {
   display: block;
   font-style: normal;
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 /* Buttons: big touch targets. */
