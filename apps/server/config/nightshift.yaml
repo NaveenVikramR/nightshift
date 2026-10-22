@@ -94,5 +94,7 @@ security:
   headers:
     - { name: payments API, url: http://127.0.0.1:18080/ }
   tls: [] # e.g. { name: payments API, host: pay.example.com, port: 443 } after the public deploy
-  repos: [] # e.g. owner/name: Dependabot + secret-scanning alerts (needs GITHUB_TOKEN)
+  # Dependabot + secret-scanning alerts (needs GITHUB_TOKEN, read-only: Metadata, Dependabot
+  # alerts, Secret scanning alerts). Without a token these checks report "not configured".
+  repos: [NaveenVikramR/nightshift]
   scanTimeoutMs: 8000
