@@ -212,19 +212,11 @@ h2 {
 .small {
   font-size: 0.85rem;
 }
-.soon {
-  display: flex;
-  flex-wrap: wrap;
+/* The /alexa link reuses .btn; an anchor needs its own box and no underline. */
+.btn-link {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-}
-.badge {
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 2px solid var(--warn);
-  color: var(--warn);
-  font-size: 0.85rem;
-  font-weight: 700;
+  text-decoration: none;
 }
 code,
 pre {
