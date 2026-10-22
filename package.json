@@ -42,7 +42,8 @@
     "chaos:reset": "node infra/scripts/chaos.mjs reset",
     "demo:prep": "node infra/scripts/demo.mjs prep",
     "demo:outage": "node infra/scripts/demo.mjs outage",
-    "demo:harden": "node infra/scripts/demo.mjs harden"
+    "demo:harden": "node infra/scripts/demo.mjs harden",
+    "demo:inject": "node infra/scripts/demo.mjs inject"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

@@ -283,3 +283,34 @@ describe('card buttons (MCP Apps bridge)', () => {
 });
 
 void result;
+
+describe('a repeated "yes" after the action ran', () => {
+  it('says it is already done, from the recorded result, without the model or a second call', async () => {
+    const model = new FakeModel([
+      useTool('prepare_action', { suggested_action: { action: 'failover_provider' } }),
+      say('Shall I go ahead?'),
+      useTool('confirm_action', { confirmation_id: 'cfm_abcdef123456' }),
+      say('Done.'),
+    ]);
+    const deps = makeDeps(model);
+    const { session, mcp } = makeSession();
+    await runTurn(deps, session, 'Fail over to Stripe');
+    await runTurn(deps, session, 'Yes');
+    const requests = model.requests.length;
+    const again = await runTurn(deps, session, 'Yes');
+    expect(again.reply).toBe(
+      "That's already done. Done. Payments API now uses Stripe. Recovered: errors at 0.5 percent.",
+    );
+    expect(again.replySource).toBe('guard');
+    expect(model.requests).toHaveLength(requests);
+    expect(mcp.calls.map((c) => c.name)).toEqual(['prepare_action', 'confirm_action']);
+    expect(historyIsValid(session.history)).toBe(true);
+  });
+
+  it('a "yes" with nothing ever confirmed goes to the model as usual', async () => {
+    const model = new FakeModel([say('Yes to what?')]);
+    const turn = await runTurn(makeDeps(model), makeSession().session, 'Yes');
+    expect(turn.reply).toBe('Yes to what?');
+    expect(model.requests).toHaveLength(1);
+  });
+});

@@ -38,6 +38,8 @@ export interface Session {
   turn: number;
   /** confirmation ids this session got from prepare_action, with the turn they were prepared in. */
   prepared: Map<string, number>;
+  /** The last action this session confirmed (its server-written result), for a repeated "yes". */
+  lastConfirmed?: { speak: string; at: number };
   trace: TraceEntry[];
   audio: Map<string, Uint8Array>;
   createdAt: number;

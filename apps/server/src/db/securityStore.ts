@@ -82,6 +82,9 @@ function findingFromRow(r: FindingRow): StoredFinding {
   };
 }
 
+/** Interactive transaction limits for saveScan (see there). */
+export const SCAN_TX_OPTIONS = { maxWait: 10_000, timeout: 30_000 } as const;
+
 export class PrismaSecurityStore implements SecurityStore {
   constructor(private readonly db: Db) {}
 
@@ -98,6 +101,11 @@ export class PrismaSecurityStore implements SecurityStore {
     return rows.map(findingFromRow);
   }
 
+  /**
+   * One transaction per scan: the scan row, one upsert per finding, then resolves. Each
+   * statement is a round trip, so on a remote database (Neon) Prisma's 5 s default expired
+   * live with only 4 findings (8.9 s; the scan was lost). 30 s covers the 50-target allowlist.
+   */
   async saveScan(input: SaveScan): Promise<ScanRecord> {
     const s = input.summary;
     const row = await this.db.$transaction(async (tx) => {
@@ -152,7 +160,7 @@ export class PrismaSecurityStore implements SecurityStore {
         });
       }
       return scan;
-    });
+    }, SCAN_TX_OPTIONS);
     return scanFromRow(row);
   }
 }

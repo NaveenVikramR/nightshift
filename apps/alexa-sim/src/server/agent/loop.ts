@@ -12,7 +12,7 @@ import { TimeoutError, withTimeout } from '../limits';
 import { errorFields, log } from '../log';
 import type { Session, TraceEntry } from '../sessions';
 import { compactForModel } from './compact';
-import { checkAgentConfirm } from './guard';
+import { checkAgentConfirm, isExplicitYes } from './guard';
 import {
   GUARDRAIL_INPUT_SPOKEN,
   GUARDRAIL_SPOKEN,
@@ -102,6 +102,9 @@ function auditGuardrailBlock(session: Session, tool: string, where: string): voi
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
+/** How long a repeated "yes" is answered with the last confirmed result. */
+const ALREADY_DONE_WINDOW_MS = 10 * 60_000;
+
 const HISTORY_LIMIT = 30;
 
 /**
@@ -149,6 +152,7 @@ function noteConfirmation(
     entry.confirmation = { step: 'prepared', id: `${id.slice(0, 4)}…` };
   } else if (entry.tool === 'confirm_action') {
     session.prepared.delete(id);
+    session.lastConfirmed = { speak: entry.note, at: Date.parse(entry.at) };
     entry.confirmation = { step: 'confirmed', id: `${id.slice(0, 4)}…` };
     entry.verification = verificationOf(data);
   }
@@ -323,9 +327,35 @@ export async function runTurn(
     return result(reply, 'guard');
   };
 
+  /**
+   * "Yes" again after the action already ran (nothing pending): say so from the recorded
+   * result, without the model. Nightshift would never run it twice anyway (single-use,
+   * idempotent confirmations); this keeps the spoken answer grounded.
+   */
+  const alreadyDone = (): TurnResult | undefined => {
+    const last = session.lastConfirmed;
+    const now = (deps.now ?? Date.now)();
+    if (!last || session.prepared.size > 0 || !isExplicitYes(utterance)) return undefined;
+    if (now - last.at > ALREADY_DONE_WINDOW_MS) return undefined;
+    const reply = `That's already done. ${last.speak}`;
+    trace.push({
+      turn: session.turn,
+      at: nowIso(),
+      source: 'agent',
+      tool: 'human',
+      input: {},
+      outcome: 'ok',
+      note: 'You said yes again: that action already ran, so nothing ran twice.',
+    });
+    closeTurn(session.history, reply);
+    return result(words(reply) <= 30 ? reply : "That's already done.", 'guard');
+  };
+
   const work = async (): Promise<TurnResult> => {
     const refused = await guardUtterance();
     if (refused) return refused;
+    const done = alreadyDone();
+    if (done) return done;
     const all: McpTool[] = await session.mcp.listTools();
     const byName = new Map(all.map((t) => [t.name, t]));
     // Trimmed once per turn: confirm_action only once something is prepared.
@@ -511,9 +541,10 @@ export async function runTurn(
     // A tool already answered (e.g. confirm_action ran and was verified): say its grounded
     // result rather than an error, because the action did happen.
     if (answered.length) {
-      const g = groundedReply('', answered);
-      closeTurn(session.history, g.text);
-      return { reply: g.text, replySource: 'tool', cards, trace, modelLabel, stats };
+      // Through result(), so a guardrail block in this turn is still said out loud.
+      const r = result(groundedReply('', answered).text, 'tool');
+      closeTurn(session.history, r.reply);
+      return r;
     }
     const reply = busy
       ? 'The model is busy right now. Try again in a minute.'

@@ -4,7 +4,12 @@
  * the person's Nightshift token. Everything Nightshift does for the simulator
  * goes through here: no shortcuts to Prometheus, Alertmanager or the demo target.
  */
-import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import {
+  Client,
+  SdkError,
+  SdkErrorCode,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 import { log } from './log';
 
 export const PROTOCOL_VERSION = '2025-11-25';
@@ -39,6 +44,11 @@ function resourceUriOf(meta: unknown): string | null {
   return typeof uri === 'string' && uri.startsWith('ui://') ? uri : null;
 }
 
+/** The SDK's request timeout (the call may still be running on the server). */
+export function isRequestTimeout(err: unknown): boolean {
+  return err instanceof SdkError && err.code === SdkErrorCode.RequestTimeout;
+}
+
 export class NightshiftMcp implements McpGateway {
   private client: Client | undefined;
   private tools: McpTool[] | undefined;
@@ -61,11 +71,16 @@ export class NightshiftMcp implements McpGateway {
     return client;
   }
 
-  /** Runs `fn`; on a transport/session failure (not a tool error), reconnects once and retries. */
+  /**
+   * Runs `fn`; on a transport/session failure (not a tool error), reconnects once and retries.
+   * Never after a request timeout: the server may still be running the call (a live scan was
+   * repeated that way), so it is reported, not retried.
+   */
   private async withReconnect<T>(what: string, fn: (c: Client) => Promise<T>): Promise<T> {
     try {
       return await fn(await this.connect());
     } catch (err) {
+      if (isRequestTimeout(err)) throw err;
       log.warn('mcp call failed, reconnecting', {
         what,
         error: err instanceof Error ? err.name : 'unknown',

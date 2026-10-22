@@ -383,3 +383,14 @@ describe('system prompt follows the Agent Skill', () => {
     }
   });
 });
+
+describe('MCP client retries', () => {
+  it('a request timeout is not retried (the server may still be running the call)', async () => {
+    const { isRequestTimeout } = await import('../src/server/mcp');
+    const { SdkError, SdkErrorCode } = await import('@modelcontextprotocol/client');
+    expect(isRequestTimeout(new SdkError(SdkErrorCode.RequestTimeout, 'Request timed out'))).toBe(
+      true,
+    );
+    expect(isRequestTimeout(new Error('socket hang up'))).toBe(false);
+  });
+});

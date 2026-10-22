@@ -451,3 +451,26 @@ describe('tool data for the model is compacted', () => {
     expect(compactForModel(small)).toBe(small);
   });
 });
+
+describe('late model failure in a turn with a guardrail block', () => {
+  it('still says that outside text was left out', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mcp = mcpWithDeploys();
+    mcp.listTools = async () => withDeploysTool;
+    const model = new FakeModel([
+      useTool('get_recent_deploys'),
+      () => {
+        throw Object.assign(new Error('rate limited'), { name: 'ModelRateLimitError' });
+      },
+    ]);
+    const turn = await runTurn(
+      makeDeps(model, { guard: new FakeGuard('blocked') }),
+      makeSession(mcp).session,
+      'What was deployed recently?',
+    );
+    expect(turn.reply).toBe(
+      `${GUARDRAIL_SPOKEN} One deploy in the last hour: version 1.4.2 at 2:41.`,
+    );
+  });
+});
