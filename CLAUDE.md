@@ -101,6 +101,10 @@ Keep this section accurate. Run from the repo root unless noted. Server config: 
   `chaos:state`, `chaos:reset` (also reports the restored v1.4.1 to the deploy history)
 - `npm run chaos:security_weak` / `chaos:security_harden` — demo-target drops / restores its security
   headers (CSP, nosniff, X-Frame-Options, HSTS; weak also leaks X-Powered-By)
+- `npm run demo:prep` — recording prep (`infra/scripts/demo.mjs`): health of stack + Nightshift +
+  alexa-sim → chaos reset (Razorpay, hardened) → optional hardened baseline scan (`DEMO_TOKEN_FILE`)
+  → weak headers → resolve open incidents (DATABASE_URL) → wait for alerts to clear → `ready`.
+  `demo:outage` (provider outage, waits for both alerts), `demo:harden` (restore headers)
 - `npm run chaos:bad_deploy [-- <delaySeconds>]` — acts as CI: POSTs deploy v1.4.2 to Nightshift
   (`NIGHTSHIFT_URL` + `NIGHTSHIFT_INGEST_TOKEN` in `infra/.env`), then razorpay fails after 60 s
 - `npm run typecheck` / `npm run lint` / `npm run format` — tsc (server + `tsconfig.ui.json` for

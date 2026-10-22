@@ -39,7 +39,10 @@
     "chaos:security_harden": "node infra/scripts/chaos.mjs security hardened",
     "chaos:failover": "node infra/scripts/chaos.mjs route-provider stripe",
     "chaos:state": "node infra/scripts/chaos.mjs state",
-    "chaos:reset": "node infra/scripts/chaos.mjs reset"
+    "chaos:reset": "node infra/scripts/chaos.mjs reset",
+    "demo:prep": "node infra/scripts/demo.mjs prep",
+    "demo:outage": "node infra/scripts/demo.mjs outage",
+    "demo:harden": "node infra/scripts/demo.mjs harden"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
