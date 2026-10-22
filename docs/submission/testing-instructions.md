@@ -22,7 +22,7 @@ docker compose -f infra/docker-compose.yml --profile localdb up -d --wait postgr
 In `apps/server/.env` set:
 
 ```
-DATABASE_URL=postgresql://nightshift:nightshift@127.0.0.1:5433/nightshift
+DATABASE_URL=postgresql://nightshift:nightshift@127.0.0.1:15432/nightshift
 ALLOWED_HOSTS=host.docker.internal
 DEMO_ADMIN_TOKEN=<any random string, 16+ characters>
 ```

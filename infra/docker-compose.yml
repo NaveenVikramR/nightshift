@@ -59,7 +59,7 @@ services:
 
   # Optional local Postgres for Nightshift (instead of Neon), only with the localdb profile:
   #   docker compose -f infra/docker-compose.yml --profile localdb up -d postgres
-  #   DATABASE_URL=postgresql://nightshift:nightshift@127.0.0.1:5433/nightshift
+  #   DATABASE_URL=postgresql://nightshift:nightshift@127.0.0.1:15432/nightshift
   # Local development only: bound to 127.0.0.1, throwaway credentials.
   postgres:
     image: postgres:17-alpine
@@ -71,7 +71,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - '127.0.0.1:${POSTGRES_PORT:-5433}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-15432}:5432'
     healthcheck:
       test: ['CMD', 'pg_isready', '-U', 'nightshift', '-d', 'nightshift']
       interval: 5s
