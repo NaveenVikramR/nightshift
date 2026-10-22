@@ -57,6 +57,29 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Optional local Postgres for Nightshift (instead of Neon), only with the localdb profile:
+  #   docker compose -f infra/docker-compose.yml --profile localdb up -d postgres
+  #   DATABASE_URL=postgresql://nightshift:nightshift@127.0.0.1:5433/nightshift
+  # Local development only: bound to 127.0.0.1, throwaway credentials.
+  postgres:
+    image: postgres:17-alpine
+    profiles: ['localdb']
+    environment:
+      POSTGRES_USER: nightshift
+      POSTGRES_PASSWORD: nightshift
+      POSTGRES_DB: nightshift
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5433}:5432'
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'nightshift', '-d', 'nightshift']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   prometheus-data:
   alertmanager-data:
+  postgres-data:
