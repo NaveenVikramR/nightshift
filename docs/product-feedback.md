@@ -126,6 +126,21 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **Onboarding:** About 15 minutes.
 - **Would I build with it again?** Yes.
 
+## Telegram Bot API (proactive alerts)
+
+- **What I used it for:** pushes on firing and resolved alerts, because an MCP server can't make
+  Alexa+ speak unprompted. The flow is Alertmanager → `POST /webhooks/alertmanager` →
+  Nightshift → `sendMessage`. The text is server-written from sanitized alert names only.
+- **What worked:**
+  - A single HTTPS call.
+  - Tested with a real bot on 2026-10-22: `sendMessage` returned HTTP 200 / `ok: true`, and a real
+    `demo:outage` produced two audited webhook deliveries and two phone pushes.
+- **What needs work:**
+  - The chat ID can only be found through `getUpdates` after the person messages the bot, and an
+    empty list gives no hint why.
+  - A bot can't message first.
+- **Would I build with it again?** Yes, until voice assistants accept pushes from tools.
+
 ## Prisma ORM 7.10.0 → 7.10.1 (+ `@prisma/adapter-pg`, `prisma dev`)
 
 - **What I used it for:** Schema and migrations for audit log, pending actions, incidents and

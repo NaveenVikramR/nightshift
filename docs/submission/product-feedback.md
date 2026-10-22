@@ -207,11 +207,18 @@ Guardrails ≤ $0.0015, CloudWatch within the free tier). Source: [docs/live-run
 - **What for:** proactive alerts, because an MCP server can't make Alexa+ speak unprompted.
   Alertmanager calls Nightshift's webhook, and Nightshift sends "🔴 Critical: … Ask Alexa: what's
   wrong?" and "✅ Resolved: …". Messages are written by the server from sanitized names only.
-- **What worked:** `sendMessage` is a single HTTPS call. We built in rate-limiting (1 per alert
-  and status per 5 minutes) and an audit row per delivery.
-- **What needs work:** in this repo it is verified against a fake Telegram endpoint (a live
-  Alertmanager → Nightshift → fake Telegram integration test). A real bot needs only
-  `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+- **What worked:**
+  - `sendMessage` is a single HTTPS call. We built in rate-limiting (1 per alert and status per
+    5 minutes) and an audit row per delivery.
+  - **Tested with a real bot on 2026-10-22.** Nightshift's `TelegramNotifier` got HTTP 200 /
+    `ok: true`. In a real `demo:outage`, the local Alertmanager delivered both firing alerts to
+    Nightshift's webhook (audited `webhooks/alertmanager ok`), and the pushes reached the phone.
+  - A live integration test (`npm run test:integration`: real Alertmanager → Nightshift → a fake
+    Telegram) covers the same path without a real bot.
+- **What needs work:**
+  - Finding the chat ID needs `getUpdates` after the person has messaged the bot. Until then the
+    API returns an empty list with no hint.
+  - A bot can't start a conversation, so the person must press **Start** first.
 - **Onboarding:** under 30 minutes.
 - **Would build again:** Yes, until voice assistants support push from tools.
 
