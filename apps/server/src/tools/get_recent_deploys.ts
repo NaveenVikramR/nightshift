@@ -3,8 +3,9 @@ import { MAX_DEPLOYS, type DeployEvent } from '../clients/deploys.js';
 import { speakableCommitLine, spokenDeployTime } from '../domain/deploys/deploys.js';
 import { capitalize, spokenCount, spokenVersion } from '../domain/spoken.js';
 import type { UntrustedText } from '../lib/untrusted.js';
-import { lookupService, type Clarification } from './common.js';
-import type { ToolDefinition } from './types.js';
+import type { ServiceDef } from '../serviceConfig.js';
+import { lookupService, type Clarification, type ServiceLookup } from './common.js';
+import type { ToolDefinition, ToolDeps } from './types.js';
 
 const inputSchema = z.object({
   service: z
@@ -50,6 +51,30 @@ export interface RecentDeploysData {
 
 const windowWords = (hours: number) => (hours === 1 ? 'the last hour' : `the last ${hours} hours`);
 
+/**
+ * No service named and several configured: if exactly one service had deploys in the
+ * window, that is the one the person means ("what was deployed recently?"). None or
+ * several → the usual answer or clarifying question. A named service is used as is.
+ */
+async function resolveDeployService(
+  ref: string | undefined,
+  deps: ToolDeps,
+  since: Date,
+  until: Date,
+): Promise<ServiceLookup | { kind: 'none' }> {
+  const found = lookupService(ref, deps.services);
+  if (found.kind !== 'clarify' || (ref !== undefined && ref.trim() !== '')) return found;
+  const withDeploys: ServiceDef[] = [];
+  for (const svc of deps.services) {
+    if (deps.deploys.sourceFor(svc) === null) continue;
+    const events = await deps.deploys.listDeploys(svc, { since, until, limit: 1 });
+    if (events.length > 0) withDeploys.push(svc);
+  }
+  if (withDeploys.length === 1) return { kind: 'service', service: withDeploys[0]! };
+  if (withDeploys.length === 0) return { kind: 'none' };
+  return found;
+}
+
 const STATUS_WORDS: Partial<Record<DeployEvent['status'], string>> = {
   failure: 'and it failed',
   in_progress: 'and it is still rolling out',
@@ -63,7 +88,8 @@ export const getRecentDeploys: ToolDefinition<
   title: 'Get recent deploys',
   description:
     "List a service's most recent deploys (version, time, author, commit message) from its configured " +
-    'deploy source. Use when the user asks what changed or what was deployed. Read only; it does not ' +
+    'deploy source. Use when the user asks what changed or what was deployed; the service is optional ' +
+    '(if only one service had deploys, it is used). Read only; it does not ' +
     'roll anything back. For a full diagnosis use explain_incident.',
   inputSchema,
   minRole: 'viewer',
@@ -75,10 +101,18 @@ export const getRecentDeploys: ToolDefinition<
   },
 
   async handler(input, { deps }) {
-    const found = lookupService(input.service, deps.services);
-    if (found.kind === 'clarify') return found.output;
-    const svc = found.service;
     const hours = input.hours ?? 24;
+    const now = deps.now();
+    const since = new Date(now.getTime() - hours * 60 * 60_000);
+    const found = await resolveDeployService(input.service, deps, since, now);
+    if (found.kind === 'clarify') return found.output;
+    if (found.kind === 'none') {
+      return {
+        speak: `No deploys to any service in ${windowWords(hours)}.`,
+        data: { service: 'all', source: null, hours, total: 0, deploys: [] },
+      };
+    }
+    const svc = found.service;
     const source = deps.deploys.sourceFor(svc);
     const base = { service: svc.name, source, hours };
 
@@ -89,9 +123,8 @@ export const getRecentDeploys: ToolDefinition<
       };
     }
 
-    const now = deps.now();
     const events = await deps.deploys.listDeploys(svc, {
-      since: new Date(now.getTime() - hours * 60 * 60_000),
+      since,
       until: now,
       limit: input.limit ?? 5,
     });

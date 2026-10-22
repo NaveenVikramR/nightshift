@@ -108,9 +108,52 @@ describe('get_recent_deploys', () => {
     expect(r.speak).toBe("I couldn't reach the Nightshift database. Try again in a minute.");
   });
 
-  it('asks which service when none is given', async () => {
+  it('no service named: uses the only service with deploys in the window, without asking', async () => {
+    const f = setup();
+    f.deploys
+      .add({ service: 'payments-api', version: 'v1.4.2', deployedAt: at('2026-10-16T09:11:00Z') })
+      // Outside the 24 h window: doesn't make webhook receiver a candidate.
+      .add({
+        service: 'webhook-receiver',
+        version: 'v9.0.0',
+        deployedAt: at('2026-10-14T09:00:00Z'),
+      });
+    const r = await invoke(tool, f.deps, {}, BOB);
+    expect(r.isError).toBe(false);
+    expect(r.speak).toMatch(/^One deploy to payments API in the last 24 hours\./);
+    expect(r.data).toMatchObject({ service: 'payments-api', total: 1 });
+    expectSpeakable(r.speak);
+  });
+
+  it('no service named and no deploys anywhere: says so', async () => {
     const r = await invoke(tool, setup().deps, {}, BOB);
+    expect(r.isError).toBe(false);
+    expect(r.speak).toBe('No deploys to any service in the last 24 hours.');
+    expect(r.data).toMatchObject({ service: 'all', total: 0, deploys: [] });
+  });
+
+  it('asks which service when none is named and several had deploys', async () => {
+    const f = setup();
+    f.deploys
+      .add({ service: 'payments-api', version: 'v1.4.2', deployedAt: at('2026-10-16T09:11:00Z') })
+      .add({
+        service: 'webhook-receiver',
+        version: 'v9.0.1',
+        deployedAt: at('2026-10-16T10:00:00Z'),
+      });
+    const r = await invoke(tool, f.deps, {}, BOB);
     expect(r.speak).toBe('Which service: payments API or webhook receiver?');
+  });
+
+  it('a named service is used as is, even if another one had the deploys', async () => {
+    const f = setup();
+    f.deploys.add({
+      service: 'webhook-receiver',
+      version: 'v9.0.1',
+      deployedAt: at('2026-10-16T10:00:00Z'),
+    });
+    const r = await invoke(tool, f.deps, { service: 'payments' }, BOB);
+    expect(r.speak).toBe('No deploys to payments API in the last 24 hours.');
   });
 
   it.each([{ limit: 0 }, { limit: 11 }, { hours: 0 }, { hours: 500 }])(
