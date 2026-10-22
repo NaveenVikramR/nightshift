@@ -38,7 +38,7 @@ work). Nightshift must stay generic: any app exposing Prometheus metrics + Alert
     (GET/DELETE → 405). See friction log FL-01.
 - zod 4.x for tool input schemas (the SDK requires zod ^4.2)
 - Express 5
-- Prisma 7.10.0 (pinned; npm `latest` is an 8.0 RC) + PostgreSQL via `@prisma/adapter-pg`.
+- Prisma 7.10.1 (pinned; npm `latest` is an 8.0 RC; 7.10.1 clears the CLI's npm-audit highs) + PostgreSQL via `@prisma/adapter-pg`.
   Config file is `apps/server/prisma7.config.ts` (Prisma 7.10 name; `prisma.config.ts` is legacy).
 - Vitest + supertest for tests
 - Simulated Alexa+ client (separate app `apps/alexa-sim`): Next.js, Web Speech API (STT),

@@ -126,7 +126,7 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
 - **Onboarding:** About 15 minutes.
 - **Would I build with it again?** Yes.
 
-## Prisma ORM 7.10.0 (+ `@prisma/adapter-pg`, `prisma dev`)
+## Prisma ORM 7.10.0 → 7.10.1 (+ `@prisma/adapter-pg`, `prisma dev`)
 
 - **What I used it for:** Schema and migrations for audit log, pending actions, incidents and
   scans; the generated client (driver adapter for Postgres); local Postgres via `prisma dev` for
@@ -142,9 +142,10 @@ One section per tool, API or SDK used. Friction details live in [friction-log.md
   - The generator's import extensions depend on whether a tsconfig exists at generate time, which
     broke the Docker image (FL-15).
   - With `adapter-pg`, a query against a refused port hangs and blocks the event loop (FL-16).
-  - `npm audit` reports 4 high-severity advisories through the CLI's own dependencies
-    (`mysql2`, `deepmerge-ts` via `@prisma/config`); the suggested fix downgrades to Prisma 6.
-    These are dev-time only for a Postgres project, but noisy.
+  - On 7.10.0, `npm audit` reported 4 high-severity advisories through the CLI's own
+    dependencies (`mysql2`, and `deepmerge-ts` via `@prisma/config`), and at first the suggested
+    fix was a downgrade to Prisma 6. The 7.10.1 patch clears them (0 vulnerabilities), so we
+    upgraded on 2026-10-22, before turning on Dependabot alerts for the public repo.
 - **Onboarding:** About 20 minutes, including the v7 adapter and config changes.
 - **Would I build with it again?** Yes. Migrations and the typed client are worth it.
 
