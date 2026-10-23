@@ -51,22 +51,20 @@ git clone https://github.com/NaveenVikramR/nightshift && cd nightshift
 npm install                                   # also generates the Prisma client
 cp infra/.env.example infra/.env
 cp apps/server/.env.example apps/server/.env
-
-# Local Postgres (compose profile "localdb")
-docker compose -f infra/docker-compose.yml --profile localdb up -d --wait postgres
 ```
 
 Edit `apps/server/.env`:
 
 ```
 DATABASE_URL=postgresql://nightshift:nightshift@127.0.0.1:15432/nightshift
-ALLOWED_HOSTS=host.docker.internal
+ALLOWED_HOSTS=localhost,127.0.0.1,[::1],host.docker.internal
 DEMO_ADMIN_TOKEN=<any random string, 16+ characters>
 ```
 
-Set the same `DEMO_ADMIN_TOKEN` in `infra/.env`, then:
+Set the same `DEMO_ADMIN_TOKEN` in `infra/.env` (Docker Compose refuses to start without it), then:
 
 ```bash
+docker compose -f infra/docker-compose.yml --profile localdb up -d --wait postgres   # local Postgres
 npm run db:migrate -w @nightshift/server     # create the tables
 npm run stack:up                             # demo service :18080, Prometheus :9090, Alertmanager :9093
 npm run token:new -- judge responder         # prints a token once + a JSON entry

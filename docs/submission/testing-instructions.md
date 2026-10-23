@@ -18,22 +18,19 @@ cp apps/server/.env.example apps/server/.env
 
 ## 2. Database and demo stack (≈ 2 min)
 
-```bash
-# Local Postgres (compose profile "localdb"), then the tables:
-docker compose -f infra/docker-compose.yml --profile localdb up -d --wait postgres
-```
-
 In `apps/server/.env` set:
 
 ```
 DATABASE_URL=postgresql://nightshift:nightshift@127.0.0.1:15432/nightshift
-ALLOWED_HOSTS=host.docker.internal
+ALLOWED_HOSTS=localhost,127.0.0.1,[::1],host.docker.internal
 DEMO_ADMIN_TOKEN=<any random string, 16+ characters>
 ```
 
-In `infra/.env`, set the same `DEMO_ADMIN_TOKEN=<…>`. Then:
+In `infra/.env`, set the same `DEMO_ADMIN_TOKEN=<…>` (Docker Compose refuses to start without it).
+Then:
 
 ```bash
+docker compose -f infra/docker-compose.yml --profile localdb up -d --wait postgres   # local Postgres
 npm run db:migrate -w @nightshift/server
 npm run stack:up        # demo service :18080, Prometheus :9090, Alertmanager :9093 (healthy = ready)
 ```
