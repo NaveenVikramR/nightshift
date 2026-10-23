@@ -14,8 +14,8 @@ Nightshift is a **self-hosted MCP server** that Alexa+ (or any MCP client) calls
 "What's wrong?", get a **correlated, grounded spoken diagnosis**, and **safely act** (ack, silence,
 failover, rollback, restart) with explicit two-phase confirmation.
 
-The monitored system in the demo is **TruePay** (pre-existing project, NOT part of the submission's new
-work). Nightshift must stay generic: any app exposing Prometheus metrics + Alertmanager + GitHub repo.
+The monitored system in the demo is `apps/demo-target`, a small simulated payments service built for
+this hackathon. Nightshift must stay generic: any app exposing Prometheus metrics + Alertmanager + GitHub repo.
 
 ## Hard requirements (judging Stage 1 is pass/fail on these)
 
@@ -57,15 +57,13 @@ apps/
         correlation/ # explain_incident engine (deterministic rules)
         posture/     # security checks + scoring
         actions/     # prepare/confirm executor, allowlist, idempotency
-      clients/       # prometheus, alertmanager, github, truepay-admin, telegram
+      clients/       # prometheus, alertmanager, github, admin API, telegram
       ui/            # MCP Apps cards (ui:// resources)
       lib/           # auth, roles, audit log, rate limit, errors
     prisma/schema.prisma
     test/
   alexa-sim/         # simulated Alexa+ web client
-  demo-target/       # lightweight service exposing TruePay-like metrics + "break it" switch
-packages/
-  mcp-prometheus-tools/  # open-source reusable package (Open Source mini challenge)
+  demo-target/       # lightweight service exposing payments-style metrics + "break it" switch
 docs/
   friction-log.md
   product-feedback.md
@@ -321,7 +319,7 @@ Telegram push ("🔴 Critical: … Ask Alexa: what's wrong?" / "✅ Resolved: �
 - `docs/product-feedback.md`: for EVERY tool/API/SDK used (MCP SDK, MCP Apps, Bedrock, Polly,
   App Runner, GitHub API…): what for, what worked, what needs work, onboarding, would build again.
 - README must cover: setup, run, architecture, how each hard part is solved, demo video link,
-  testing credentials for judges, what's new vs pre-existing (TruePay = monitored target only).
+  testing credentials for judges, what's new vs third-party (everything in the repo is new).
 - Demo video < 3 min, public YouTube, no copyrighted music.
 
 ## Definition of done for any feature

@@ -1,5 +1,5 @@
 # Nightshift service catalog. Validated at startup (src/serviceConfig.ts).
-# Plugging in another app (e.g. TruePay) means editing THIS file only:
+# Plugging in your own app means editing THIS file only:
 # point the URLs at its Prometheus/Alertmanager and write PromQL per signal.
 #
 # Env overrides (for deployment): PROMETHEUS_URL, ALERTMANAGER_URL.

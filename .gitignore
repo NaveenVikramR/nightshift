@@ -14,6 +14,13 @@ infra/secrets/
 .env.*
 !.env.example
 
+# Media (demo recordings live outside git; screenshots are PNG and stay tracked)
+*.webm
+*.mp4
+*.mp3
+*.mov
+*.wav
+
 # Logs
 *.log
 npm-debug.log*
