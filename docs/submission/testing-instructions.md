@@ -1,5 +1,9 @@
 # Testing instructions (local, about 5 minutes)
 
+Demo video: https://youtu.be/wR8AIjl1880. Nightshift runs on your machine; there is no public
+endpoint, and no testing credentials are needed: step 3 creates your own tokens. The MCP server and
+all 13 tools need no AWS account and no API keys.
+
 **Needs:** Node.js 22.18+ (npm 10+), Docker Desktop (running) and Git. Everything binds to
 127.0.0.1. Replace every `<…>` placeholder; no secrets are in the repo.
 
