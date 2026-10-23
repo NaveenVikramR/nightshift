@@ -9,7 +9,7 @@ and [docs/live-run.md](../live-run.md). FL-NN refers to friction-log entries.
 
 Everything runs in **ap-southeast-2 (Sydney)**. There are no access keys: the AWS SDK for
 JavaScript v3 default chain loads the least-privilege role `nightshift-app` (assumed locally from
-`aws login`; an instance profile on EC2).
+`aws login`; on EC2 it would be the instance profile, but EC2 is prepared, not deployed).
 
 | Service                                    | How Nightshift uses it                                                                                                                                                                                                                                                                                                                                                       | Status                                                                                |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
